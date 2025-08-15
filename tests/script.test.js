@@ -15,6 +15,16 @@ jest.unstable_mockModule('@sgnl-ai/secevent', () => {
   };
 });
 
+// Mock @sgnl-ai/set-transmitter module
+jest.unstable_mockModule('@sgnl-ai/set-transmitter', () => ({
+  transmitSET: jest.fn().mockResolvedValue({
+    status: 'success',
+    statusCode: 200,
+    body: '{"success":true}',
+    retryable: false
+  })
+}));
+
 // Mock crypto module
 jest.unstable_mockModule('crypto', () => ({
   createPrivateKey: jest.fn(() => 'mock-private-key')
@@ -23,10 +33,8 @@ jest.unstable_mockModule('crypto', () => ({
 // Import after mocking
 const { createBuilder } = await import('@sgnl-ai/secevent');
 const { createPrivateKey } = await import('crypto');
+const { transmitSET } = await import('@sgnl-ai/set-transmitter');
 const script = (await import('../src/script.mjs')).default;
-
-// Mock fetch globally
-global.fetch = jest.fn();
 
 describe('CAEP Session Revoked Transmitter', () => {
   let mockBuilder;
@@ -41,11 +49,11 @@ describe('CAEP Session Revoked Transmitter', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockBuilder = createBuilder();
-    global.fetch.mockResolvedValue({
-      ok: true,
-      status: 200,
-      statusText: 'OK',
-      text: jest.fn().mockResolvedValue('{"success":true}')
+    transmitSET.mockResolvedValue({
+      status: 'success',
+      statusCode: 200,
+      body: '{"success":true}',
+      retryable: false
     });
   });
 
@@ -128,21 +136,21 @@ describe('CAEP Session Revoked Transmitter', () => {
 
       await script.invoke(params, mockContext);
 
-      expect(global.fetch).toHaveBeenCalledWith(
+      expect(transmitSET).toHaveBeenCalledWith(
+        'mock.jwt.token',
         'https://receiver.example.com/events/v1/events',
         expect.any(Object)
       );
     });
 
-    test('should include auth token in request headers', async () => {
+    test('should include auth token in request', async () => {
       await script.invoke(validParams, mockContext);
 
-      expect(global.fetch).toHaveBeenCalledWith(
-        expect.any(String),
+      expect(transmitSET).toHaveBeenCalledWith(
+        'mock.jwt.token',
+        'https://receiver.example.com/events',
         expect.objectContaining({
-          headers: expect.objectContaining({
-            'Authorization': 'Bearer test-token'
-          })
+          authToken: 'Bearer test-token'
         })
       );
     });
@@ -157,12 +165,11 @@ describe('CAEP Session Revoked Transmitter', () => {
 
       await script.invoke(validParams, context);
 
-      expect(global.fetch).toHaveBeenCalledWith(
-        expect.any(String),
+      expect(transmitSET).toHaveBeenCalledWith(
+        'mock.jwt.token',
+        'https://receiver.example.com/events',
         expect.objectContaining({
-          headers: expect.objectContaining({
-            'Authorization': 'Bearer test-token-no-prefix'
-          })
+          authToken: 'test-token-no-prefix'
         })
       );
     });
@@ -175,12 +182,13 @@ describe('CAEP Session Revoked Transmitter', () => {
 
       await script.invoke(params, mockContext);
 
-      expect(global.fetch).toHaveBeenCalledWith(
-        expect.any(String),
+      expect(transmitSET).toHaveBeenCalledWith(
+        'mock.jwt.token',
+        'https://receiver.example.com/events',
         expect.objectContaining({
-          headers: expect.objectContaining({
+          headers: {
             'User-Agent': 'CustomAgent/1.0'
-          })
+          }
         })
       );
     });
@@ -242,11 +250,11 @@ describe('CAEP Session Revoked Transmitter', () => {
     });
 
     test('should handle non-retryable HTTP errors', async () => {
-      global.fetch.mockResolvedValue({
-        ok: false,
-        status: 400,
-        statusText: 'Bad Request',
-        text: jest.fn().mockResolvedValue('{"error":"Invalid request"}')
+      transmitSET.mockResolvedValue({
+        status: 'failed',
+        statusCode: 400,
+        body: '{"error":"Invalid request"}',
+        retryable: false
       });
 
       const result = await script.invoke(validParams, mockContext);
@@ -260,48 +268,36 @@ describe('CAEP Session Revoked Transmitter', () => {
     });
 
     test('should throw error for retryable HTTP errors', async () => {
-      global.fetch.mockResolvedValue({
-        ok: false,
-        status: 429,
-        statusText: 'Too Many Requests',
-        text: jest.fn().mockResolvedValue('Rate limited')
-      });
+      transmitSET.mockRejectedValue(
+        new Error('SET transmission failed: 429 Too Many Requests')
+      );
 
       await expect(script.invoke(validParams, mockContext))
         .rejects.toThrow('SET transmission failed: 429 Too Many Requests');
     });
 
     test('should throw error for 502 Bad Gateway', async () => {
-      global.fetch.mockResolvedValue({
-        ok: false,
-        status: 502,
-        statusText: 'Bad Gateway',
-        text: jest.fn().mockResolvedValue('')
-      });
+      transmitSET.mockRejectedValue(
+        new Error('SET transmission failed: 502 Bad Gateway')
+      );
 
       await expect(script.invoke(validParams, mockContext))
         .rejects.toThrow('SET transmission failed: 502 Bad Gateway');
     });
 
     test('should throw error for 503 Service Unavailable', async () => {
-      global.fetch.mockResolvedValue({
-        ok: false,
-        status: 503,
-        statusText: 'Service Unavailable',
-        text: jest.fn().mockResolvedValue('')
-      });
+      transmitSET.mockRejectedValue(
+        new Error('SET transmission failed: 503 Service Unavailable')
+      );
 
       await expect(script.invoke(validParams, mockContext))
         .rejects.toThrow('SET transmission failed: 503 Service Unavailable');
     });
 
     test('should throw error for 504 Gateway Timeout', async () => {
-      global.fetch.mockResolvedValue({
-        ok: false,
-        status: 504,
-        statusText: 'Gateway Timeout',
-        text: jest.fn().mockResolvedValue('')
-      });
+      transmitSET.mockRejectedValue(
+        new Error('SET transmission failed: 504 Gateway Timeout')
+      );
 
       await expect(script.invoke(validParams, mockContext))
         .rejects.toThrow('SET transmission failed: 504 Gateway Timeout');
@@ -316,7 +312,8 @@ describe('CAEP Session Revoked Transmitter', () => {
 
       await script.invoke(params, mockContext);
 
-      expect(global.fetch).toHaveBeenCalledWith(
+      expect(transmitSET).toHaveBeenCalledWith(
+        'mock.jwt.token',
         'https://receiver.example.com/events',
         expect.any(Object)
       );
@@ -331,25 +328,20 @@ describe('CAEP Session Revoked Transmitter', () => {
 
       await script.invoke(params, mockContext);
 
-      expect(global.fetch).toHaveBeenCalledWith(
+      expect(transmitSET).toHaveBeenCalledWith(
+        'mock.jwt.token',
         'https://receiver.example.com/events',
         expect.any(Object)
       );
     });
 
-    test('should send correct content type header', async () => {
+    test('should transmit JWT to correct URL', async () => {
       await script.invoke(validParams, mockContext);
 
-      expect(global.fetch).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.objectContaining({
-          method: 'POST',
-          headers: expect.objectContaining({
-            'Content-Type': 'application/secevent+jwt',
-            'Accept': 'application/json'
-          }),
-          body: 'mock.jwt.token'
-        })
+      expect(transmitSET).toHaveBeenCalledWith(
+        'mock.jwt.token',
+        'https://receiver.example.com/events',
+        expect.any(Object)
       );
     });
 

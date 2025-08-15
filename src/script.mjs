@@ -1,52 +1,10 @@
 import { createBuilder } from '@sgnl-ai/secevent';
+import { transmitSET } from '@sgnl-ai/set-transmitter';
 import { createPrivateKey } from 'crypto';
 
 // Event type constant
 const SESSION_REVOKED_EVENT = 'https://schemas.openid.net/secevent/caep/event-type/session-revoked';
 
-/**
- * Transmits a Security Event Token (SET) to the specified endpoint
- * Note: This will be replaced with @sgnl-ai/set-transmitter when available
- */
-async function transmitSET(jwt, url, options = {}) {
-  const headers = {
-    'Accept': 'application/json',
-    'Content-Type': 'application/secevent+jwt',
-    'User-Agent': options.userAgent || 'SGNL-Action-Framework/1.0'
-  };
-
-  if (options.authToken) {
-    headers['Authorization'] = options.authToken.startsWith('Bearer ')
-      ? options.authToken
-      : `Bearer ${options.authToken}`;
-  }
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers,
-    body: jwt
-  });
-
-  const responseBody = await response.text();
-
-  const result = {
-    status: response.ok ? 'success' : 'failed',
-    statusCode: response.status,
-    body: responseBody,
-    retryable: false
-  };
-
-  // Determine if error is retryable
-  if (!response.ok) {
-    result.retryable = [429, 502, 503, 504].includes(response.status);
-    if (result.retryable) {
-      // Throw to trigger framework retry
-      throw new Error(`SET transmission failed: ${response.status} ${response.statusText}`);
-    }
-  }
-
-  return result;
-}
 
 /**
  * Parse subject JSON string
@@ -143,10 +101,12 @@ export default {
     // Build destination URL
     const url = buildUrl(params.address, params.addressSuffix);
 
-    // Transmit the SET
+    // Transmit the SET using the library
     return await transmitSET(jwt, url, {
       authToken,
-      userAgent: params.userAgent
+      headers: {
+        'User-Agent': params.userAgent || 'SGNL-Action-Framework/1.0'
+      }
     });
   },
 
