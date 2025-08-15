@@ -1,48 +1,118 @@
-name: job-template
-description: Template for SGNL JavaScript jobs - replace with your job description
+name: caep-session-revoked
+description: Transmits CAEP Session Revoked events as Security Event Tokens (SET)
 
-# Input parameters for web form generation
+# Input parameters for the session revoked event
 inputs:
-  target:
+  audience:
     type: text
-    description: Target resource identifier (e.g., user email, group ID)
+    description: Intended recipient of the SET (e.g., https://customer.okta.com/)
     required: true
     validation:
       min: 1
+      max: 500
+
+  subject:
+    type: text
+    description: Subject identifier JSON (e.g., {"format":"email","email":"user@example.com"})
+    required: true
+    validation:
+      min: 1
+      max: 2000
+
+  initiatingEntity:
+    type: text
+    description: What initiated the session revocation (policy, admin, user)
+    required: false
+    validation:
+      enum: ["policy", "admin", "user", "system"]
+
+  reasonAdmin:
+    type: text
+    description: Administrative reason for revocation (shown to admins)
+    required: false
+    validation:
+      max: 1000
+
+  reasonUser:
+    type: text
+    description: User-facing reason for revocation (shown to users)
+    required: false
+    validation:
+      max: 1000
+
+  eventTimestamp:
+    type: number
+    description: Unix timestamp when the session was revoked (defaults to now)
+    required: false
+
+  address:
+    type: text
+    description: Destination URL for the SET transmission
+    required: true
+    validation:
+      min: 1
+      max: 500
+      regex: ^https?://.*
+
+  addressSuffix:
+    type: text
+    description: Optional suffix to append to the address
+    required: false
+    validation:
       max: 100
 
-  action:
+  issuer:
     type: text
-    description: Action to perform on the target resource
+    description: JWT issuer identifier (default https://sgnl.ai/)
+    required: false
+    validation:
+      max: 500
+
+  signingMethod:
+    type: text
+    description: JWT signing algorithm (default RS256)
+    required: false
+    validation:
+      enum: ["RS256", "RS384", "RS512", "ES256", "ES384", "ES512"]
+
+  userAgent:
+    type: text
+    description: User-Agent header for HTTP requests
+    required: false
+    validation:
+      max: 200
+
+# Secrets required for operation
+secrets:
+  SSF_KEY:
+    type: text
+    description: RSA private key for signing the JWT (PEM format)
     required: true
-    validation:
-      min: 1
-      max: 50
 
-  options:
-    type: array
-    description: Additional options for the operation
-    required: false
-    item_type: text
-    validation:
-      max: 10
+  SSF_KEY_ID:
+    type: text
+    description: Key identifier for the JWT header
+    required: true
 
-  dry_run:
-    type: boolean
-    description: Preview changes without executing them
+  AUTH_TOKEN:
+    type: text
+    description: Bearer token for authenticating with the SET receiver
     required: false
-    default: false
 
 # Expected output structure
 outputs:
   status:
     type: text
-    description: Operation result (success, failed, recovered, etc.)
+    description: Operation result (success or failed)
 
-  target:
+  statusCode:
+    type: number
+    description: HTTP status code from the SET receiver
+
+  body:
     type: text
-    description: The target resource that was processed
+    description: Response body from the SET receiver
 
-  processed_at:
-    type: datetime
-    description: When the operation completed (ISO 8601)
+  retryable:
+    type: boolean
+    description: Whether the error is retryable
