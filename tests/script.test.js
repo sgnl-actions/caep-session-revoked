@@ -42,7 +42,7 @@ describe('CAEP Session Revoked Transmitter', () => {
     secrets: {
       SSF_KEY: '-----BEGIN RSA PRIVATE KEY-----\nMOCK_KEY\n-----END RSA PRIVATE KEY-----',
       SSF_KEY_ID: 'test-key-id',
-      AUTH_TOKEN: 'Bearer test-token'
+      BEARER_AUTH_TOKEN: 'Bearer test-token'
     }
   };
 
@@ -159,7 +159,7 @@ describe('CAEP Session Revoked Transmitter', () => {
       const context = {
         secrets: {
           ...mockContext.secrets,
-          AUTH_TOKEN: 'test-token-no-prefix'
+          BEARER_AUTH_TOKEN: 'test-token-no-prefix'
         }
       };
 

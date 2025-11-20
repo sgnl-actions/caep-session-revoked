@@ -25,7 +25,7 @@ The CAEP Session Revoked event is used to notify receivers when a user's session
 |------|----------|-------------|
 | `SSF_KEY` | Yes | RSA private key in PEM format for signing the JWT |
 | `SSF_KEY_ID` | Yes | Key identifier to include in the JWT header |
-| `AUTH_TOKEN` | No | Bearer token for authenticating with the SET receiver |
+| `BEARER_AUTH_TOKEN` | No | Bearer token for authenticating with the SET receiver |
 
 ### Input Parameters
 
@@ -173,7 +173,7 @@ The action creates a CAEP Session Revoked event following this structure:
    - Ensure proper escaping of quotes in JSON strings
 
 3. **"SET transmission failed: 401 Unauthorized"**
-   - Verify the AUTH_TOKEN secret is configured correctly
+   - Verify the `BEARER_AUTH_TOKEN` secret is configured correctly
    - Check that the token hasn't expired
 
 4. **"SET transmission failed: 429 Too Many Requests"**

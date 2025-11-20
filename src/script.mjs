@@ -32,6 +32,25 @@ function buildUrl(address, suffix) {
 export default {
   /**
    * Transmit a CAEP Session Revoked event
+   * @param {Object} params - Input parameters
+   * @param {string} params.audience - Intended recipient of the SET
+   * @param {string} params.subject - Subject identifier JSON
+   * @param {string} params.address - Destination URL for the SET transmission
+   * @param {string} params.initiatingEntity - What initiated the revocation: policy, admin, user, system
+   * @param {string} params.reasonAdmin - Administrative reason for revocation
+   * @param {string} params.reasonUser - User-facing reason for revocation
+   * @param {number} params.eventTimestamp - Unix timestamp when the session was revoked
+   * @param {string} params.addressSuffix - Optional suffix to append to the address
+   * @param {string} params.issuer - JWT issuer identifier
+   * @param {string} params.signingMethod - JWT signing algorithm
+   * @param {string} params.userAgent - User-Agent header for HTTP requests
+   *
+   * @param {Object} context - Execution context with secrets and environment
+   * @param {string} context.secrets.SSF_KEY - RSA private key in PEM format for signing the JWT
+   * @param {string} context.secrets.SSF_KEY_ID - Key identifier to include in the JWT header
+   * @param {string} context.secrets.BEARER_AUTH_TOKEN - Bearer token for authenticating with the SET receiver
+   *
+   * @returns {Promise<Object>} Action result
    */
   invoke: async (params, context) => {
     // Validate required parameters
@@ -48,7 +67,7 @@ export default {
     // Get secrets
     const ssfKey = context.secrets?.SSF_KEY;
     const ssfKeyId = context.secrets?.SSF_KEY_ID;
-    const authToken = context.secrets?.AUTH_TOKEN;
+    const authToken = context.secrets?.BEARER_AUTH_TOKEN;
 
     if (!ssfKey) {
       throw new Error('SSF_KEY secret is required');
