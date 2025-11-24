@@ -94,7 +94,7 @@ secrets:
     description: Key identifier for the JWT header
     required: true
 
-  AUTH_TOKEN:
+  BEARER_AUTH_TOKEN:
     type: text
     description: Bearer token for authenticating with the SET receiver
     required: false
