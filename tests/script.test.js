@@ -209,12 +209,12 @@ describe('CAEP Session Revoked Transmitter', () => {
         .rejects.toThrow('subject is required');
     });
 
-    test('should throw error for missing address', async () => {
+    test('should throw error for missing address and ADDRESS environment variable', async () => {
       const params = { ...validParams };
       delete params.address;
 
       await expect(script.invoke(params, mockContext))
-        .rejects.toThrow('address is required');
+        .rejects.toThrow('No URL specified');
     });
 
     test('should throw error for invalid subject JSON', async () => {
@@ -341,6 +341,66 @@ describe('CAEP Session Revoked Transmitter', () => {
       expect(transmitSET).toHaveBeenCalledWith(
         'mock.jwt.token',
         'https://receiver.example.com/events',
+        expect.any(Object)
+      );
+    });
+
+    test('should use ADDRESS environment variable when address parameter not provided', async () => {
+      const params = { ...validParams };
+      delete params.address;
+
+      const context = {
+        ...mockContext,
+        environment: {
+          ADDRESS: 'https://env.example.com'
+        }
+      };
+
+      await script.invoke(params, context);
+
+      expect(transmitSET).toHaveBeenCalledWith(
+        'mock.jwt.token',
+        'https://env.example.com',
+        expect.any(Object)
+      );
+    });
+
+    test('should prefer address parameter over ADDRESS environment variable', async () => {
+      const context = {
+        ...mockContext,
+        environment: {
+          ADDRESS: 'https://env.example.com'
+        }
+      };
+
+      await script.invoke(validParams, context);
+
+      expect(transmitSET).toHaveBeenCalledWith(
+        'mock.jwt.token',
+        'https://receiver.example.com/events',
+        expect.any(Object)
+      );
+    });
+
+    test('should apply addressSuffix to ADDRESS environment variable', async () => {
+      const params = {
+        ...validParams,
+        addressSuffix: '/v1/events'
+      };
+      delete params.address;
+
+      const context = {
+        ...mockContext,
+        environment: {
+          ADDRESS: 'https://env.example.com'
+        }
+      };
+
+      await script.invoke(params, context);
+
+      expect(transmitSET).toHaveBeenCalledWith(
+        'mock.jwt.token',
+        'https://env.example.com/v1/events',
         expect.any(Object)
       );
     });

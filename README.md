@@ -21,27 +21,35 @@ The CAEP Session Revoked event is used to notify receivers when a user's session
 
 ### Secrets
 
-| Name | Required | Description |
-|------|----------|-------------|
-| `SSF_KEY` | Yes | RSA private key in PEM format for signing the JWT |
-| `SSF_KEY_ID` | Yes | Key identifier to include in the JWT header |
-| `BEARER_AUTH_TOKEN` | No | Bearer token for authenticating with the SET receiver |
+| Name                | Required | Description                                           |
+| ------------------- | -------- | ----------------------------------------------------- |
+| `SSF_KEY`           | Yes      | RSA private key in PEM format for signing the JWT     |
+| `SSF_KEY_ID`        | Yes      | Key identifier to include in the JWT header           |
+| `BEARER_AUTH_TOKEN` | No       | Bearer token for authenticating with the SET receiver |
+
+### Environment Variables
+
+| Variable  | Description                                             | Required |
+| --------- | ------------------------------------------------------- | -------- |
+| `ADDRESS` | Default base URL when address parameter is not provided | No       |
 
 ### Input Parameters
 
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| `audience` | text | Yes | Intended recipient of the SET (e.g., `https://customer.okta.com/`) |
-| `subject` | text | Yes | Subject identifier JSON (e.g., `{"format":"email","email":"user@example.com"}`) |
-| `address` | text | Yes | Destination URL for the SET transmission |
-| `initiatingEntity` | text | No | What initiated the revocation: `policy`, `admin`, `user`, `system` |
-| `reasonAdmin` | text | No | Administrative reason for revocation (shown to admins) |
-| `reasonUser` | text | No | User-facing reason for revocation (shown to users) |
-| `eventTimestamp` | number | No | Unix timestamp when the session was revoked (defaults to now) |
-| `addressSuffix` | text | No | Optional suffix to append to the address |
-| `issuer` | text | No | JWT issuer identifier (default: `https://sgnl.ai/`) |
-| `signingMethod` | text | No | JWT signing algorithm: `RS256`, `RS384`, `RS512`, `ES256`, `ES384`, `ES512` (default: `RS256`) |
-| `userAgent` | text | No | User-Agent header for HTTP requests |
+| Name               | Type   | Required | Description                                                                                    |
+| ------------------ | ------ | -------- | ---------------------------------------------------------------------------------------------- |
+| `audience`         | text   | Yes      | Intended recipient of the SET (e.g., `https://customer.okta.com/`)                             |
+| `subject`          | text   | Yes      | Subject identifier JSON (e.g., `{"format":"email","email":"user@example.com"}`)                |
+| `address`          | text   | No\*     | Destination URL for the SET transmission                                                       |
+| `initiatingEntity` | text   | No       | What initiated the revocation: `policy`, `admin`, `user`, `system`                             |
+| `reasonAdmin`      | text   | No       | Administrative reason for revocation (shown to admins)                                         |
+| `reasonUser`       | text   | No       | User-facing reason for revocation (shown to users)                                             |
+| `eventTimestamp`   | number | No       | Unix timestamp when the session was revoked (defaults to now)                                  |
+| `addressSuffix`    | text   | No       | Optional suffix to append to the address                                                       |
+| `issuer`           | text   | No       | JWT issuer identifier (default: `https://sgnl.ai/`)                                            |
+| `signingMethod`    | text   | No       | JWT signing algorithm: `RS256`, `RS384`, `RS512`, `ES256`, `ES384`, `ES512` (default: `RS256`) |
+| `userAgent`        | text   | No       | User-Agent header for HTTP requests                                                            |
+
+\*Either `address` input param or `ADDRESS` environment variable must be provided
 
 ### Outputs
 

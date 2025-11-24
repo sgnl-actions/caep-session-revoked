@@ -5,7 +5,6 @@ import { createPrivateKey } from 'crypto';
 // Event type constant
 const SESSION_REVOKED_EVENT = 'https://schemas.openid.net/secevent/caep/event-type/session-revoked';
 
-
 /**
  * Parse subject JSON string
  */
@@ -46,6 +45,7 @@ export default {
    * @param {string} params.userAgent - User-Agent header for HTTP requests
    *
    * @param {Object} context - Execution context with secrets and environment
+   * @param {string} context.environment.ADDRESS - Default target address for the request
    * @param {string} context.secrets.SSF_KEY - RSA private key in PEM format for signing the JWT
    * @param {string} context.secrets.SSF_KEY_ID - Key identifier to include in the JWT header
    * @param {string} context.secrets.BEARER_AUTH_TOKEN - Bearer token for authenticating with the SET receiver
@@ -59,9 +59,6 @@ export default {
     }
     if (!params.subject) {
       throw new Error('subject is required');
-    }
-    if (!params.address) {
-      throw new Error('address is required');
     }
 
     // Get secrets
@@ -83,7 +80,7 @@ export default {
 
     // Build event payload
     const eventPayload = {
-      event_timestamp: params.eventTimestamp || Math.floor(Date.now() / 1000)
+      event_timestamp: params.eventTimestamp || Math.floor(Date.now() / 1000),
     };
 
     // Add optional event claims
@@ -104,28 +101,36 @@ export default {
       .withIssuer(issuer)
       .withAudience(params.audience)
       .withIat(Math.floor(Date.now() / 1000))
-      .withClaim('sub_id', subject)  // CAEP 3.0 format
+      .withClaim('sub_id', subject) // CAEP 3.0 format
       .withEvent(SESSION_REVOKED_EVENT, eventPayload);
 
-    // Sign the SET
-    const privateKeyObject = createPrivateKey(ssfKey);
-    const signingKey = {
-      key: privateKeyObject,
+    // Sign the SET with the private key
+    const privateKey = createPrivateKey(ssfKey);
+    const { jwt } = await builder.sign({
+      key: privateKey,
       alg: signingMethod,
-      kid: ssfKeyId
-    };
+      kid: ssfKeyId,
+    });
 
-    const { jwt } = await builder.sign(signingKey);
+    let baseUrl = params.address || context.environment?.ADDRESS;
 
-    // Build destination URL
-    const url = buildUrl(params.address, params.addressSuffix);
+    if (!baseUrl) {
+      if (params.addressSuffix) {
+        throw new Error(
+          'addressSuffix provided but no base address available. Provide either address parameter or ADDRESS environment variable'
+        );
+      }
+      throw new Error('No URL specified. Provide either address parameter or ADDRESS environment variable');
+    }
+
+    const url = buildUrl(baseUrl, params.addressSuffix);
 
     // Transmit the SET using the library
     return await transmitSET(jwt, url, {
       authToken,
       headers: {
-        'User-Agent': params.userAgent || 'SGNL-Action-Framework/1.0'
-      }
+        'User-Agent': params.userAgent || 'SGNL-Action-Framework/1.0',
+      },
     });
   },
 
@@ -136,10 +141,12 @@ export default {
     const { error } = params;
 
     // Check if this is a retryable error
-    if (error.message?.includes('429') ||
-        error.message?.includes('502') ||
-        error.message?.includes('503') ||
-        error.message?.includes('504')) {
+    if (
+      error.message?.includes('429') ||
+      error.message?.includes('502') ||
+      error.message?.includes('503') ||
+      error.message?.includes('504')
+    ) {
       return { status: 'retry_requested' };
     }
 
@@ -152,5 +159,5 @@ export default {
    */
   halt: async (_params, _context) => {
     return { status: 'halted' };
-  }
+  },
 };
