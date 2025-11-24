@@ -13,7 +13,7 @@ The CAEP Session Revoked event is used to notify receivers when a user's session
 ## Prerequisites
 
 - Node.js 22 runtime environment
-- RSA private key for JWT signing
+- Pre-signed JWT Security Event Token (created externally)
 - Target receiver endpoint that accepts Security Event Tokens
 - Optional: Bearer token for receiver authentication
 
@@ -23,24 +23,15 @@ The CAEP Session Revoked event is used to notify receivers when a user's session
 
 | Name | Required | Description |
 |------|----------|-------------|
-| `SSF_KEY` | Yes | RSA private key in PEM format for signing the JWT |
-| `SSF_KEY_ID` | Yes | Key identifier to include in the JWT header |
 | `BEARER_AUTH_TOKEN` | No | Bearer token for authenticating with the SET receiver |
 
 ### Input Parameters
 
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
-| `audience` | text | Yes | Intended recipient of the SET (e.g., `https://customer.okta.com/`) |
-| `subject` | text | Yes | Subject identifier JSON (e.g., `{"format":"email","email":"user@example.com"}`) |
+| `jwt` | text | Yes | Pre-signed JWT Security Event Token |
 | `address` | text | Yes | Destination URL for the SET transmission |
-| `initiatingEntity` | text | No | What initiated the revocation: `policy`, `admin`, `user`, `system` |
-| `reasonAdmin` | text | No | Administrative reason for revocation (shown to admins) |
-| `reasonUser` | text | No | User-facing reason for revocation (shown to users) |
-| `eventTimestamp` | number | No | Unix timestamp when the session was revoked (defaults to now) |
 | `addressSuffix` | text | No | Optional suffix to append to the address |
-| `issuer` | text | No | JWT issuer identifier (default: `https://sgnl.ai/`) |
-| `signingMethod` | text | No | JWT signing algorithm: `RS256`, `RS384`, `RS512`, `ES256`, `ES384`, `ES512` (default: `RS256`) |
 | `userAgent` | text | No | User-Agent header for HTTP requests |
 
 ### Outputs
@@ -58,56 +49,43 @@ The CAEP Session Revoked event is used to notify receivers when a user's session
 
 ```json
 {
-  "audience": "https://receiver.example.com",
-  "subject": "{\"format\":\"email\",\"email\":\"user@example.com\"}",
+  "jwt": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...",
   "address": "https://receiver.example.com/events"
 }
 ```
 
-### Admin-Initiated Revocation with Reasons
+### With Address Suffix
 
 ```json
 {
-  "audience": "https://receiver.example.com",
-  "subject": "{\"format\":\"email\",\"email\":\"user@example.com\"}",
-  "address": "https://receiver.example.com/events",
-  "initiatingEntity": "admin",
-  "reasonAdmin": "Account compromised - suspicious login from new location",
-  "reasonUser": "Your session has been terminated for security reasons. Please log in again."
-}
-```
-
-### Policy-Triggered Revocation
-
-```json
-{
-  "audience": "https://receiver.example.com",
-  "subject": "{\"format\":\"opaque\",\"id\":\"user-123-456\"}",
+  "jwt": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...",
   "address": "https://api.example.com",
-  "addressSuffix": "/v1/security-events",
-  "initiatingEntity": "policy",
-  "reasonAdmin": "Device compliance check failed",
-  "reasonUser": "Your device no longer meets security requirements"
+  "addressSuffix": "/v1/security-events"
 }
 ```
 
-## Subject Formats
+## JWT Structure
 
-The `subject` parameter must be a JSON string representing the user whose session was revoked. Common formats include:
+The JWT parameter must be a pre-signed Security Event Token. The JWT should be created externally and follow the CAEP specification. Here's an example of the expected JWT payload structure:
 
-### Email Format
 ```json
-{"format": "email", "email": "user@example.com"}
-```
-
-### Opaque Identifier
-```json
-{"format": "opaque", "id": "user-unique-id-123"}
-```
-
-### Phone Number
-```json
-{"format": "phone_number", "phone_number": "+1-555-555-5555"}
+{
+  "iss": "https://sgnl.ai/",
+  "aud": "https://receiver.example.com",
+  "iat": 1234567890,
+  "sub_id": {
+    "format": "email",
+    "email": "user@example.com"
+  },
+  "events": {
+    "https://schemas.openid.net/secevent/caep/event-type/session-revoked": {
+      "event_timestamp": 1234567890,
+      "initiating_entity": "admin",
+      "reason_admin": "Security policy violation",
+      "reason_user": "Your session has been terminated"
+    }
+  }
+}
 ```
 
 ## Error Handling
@@ -130,62 +108,35 @@ These errors indicate permanent failures:
 
 ## Security Considerations
 
-1. **Private Key Security**: The `SSF_KEY` must be kept secure and should never be logged or exposed
+1. **JWT Security**: The pre-signed JWT must be created securely and protected during transmission
 2. **HTTPS Only**: All SET transmissions use HTTPS to ensure confidentiality
 3. **JWT Validation**: Receivers should validate the JWT signature using the corresponding public key
-4. **Subject Privacy**: Avoid including sensitive information in the subject identifier
-5. **Reason Text**: Be careful not to expose sensitive details in reason messages
+4. **Token Expiration**: Ensure JWTs have appropriate expiration times
+5. **Bearer Token**: Protect the `BEARER_AUTH_TOKEN` secret and rotate it regularly
 
-## Event Structure
-
-The action creates a CAEP Session Revoked event following this structure:
-
-```json
-{
-  "iss": "https://sgnl.ai/",
-  "aud": "https://receiver.example.com",
-  "iat": 1234567890,
-  "sub_id": {
-    "format": "email",
-    "email": "user@example.com"
-  },
-  "events": {
-    "https://schemas.openid.net/secevent/caep/event-type/session-revoked": {
-      "event_timestamp": 1234567890,
-      "initiating_entity": "admin",
-      "reason_admin": "Security policy violation",
-      "reason_user": "Your session has been terminated"
-    }
-  }
-}
-```
 
 ## Troubleshooting
 
 ### Common Issues
 
-1. **"SSF_KEY secret is required"**
-   - Ensure the RSA private key is configured in secrets
-   - Verify the key is in PEM format
+1. **"jwt is required"**
+   - Ensure the JWT parameter is provided and not empty
+   - Verify the JWT is properly formatted
 
-2. **"Invalid subject JSON"**
-   - Check that the subject parameter contains valid JSON
-   - Ensure proper escaping of quotes in JSON strings
-
-3. **"SET transmission failed: 401 Unauthorized"**
+2. **"SET transmission failed: 401 Unauthorized"**
    - Verify the `BEARER_AUTH_TOKEN` secret is configured correctly
    - Check that the token hasn't expired
 
-4. **"SET transmission failed: 429 Too Many Requests"**
+3. **"SET transmission failed: 429 Too Many Requests"**
    - The receiver is rate limiting requests
    - The framework will automatically retry with backoff
 
 ### Debug Tips
 
-- Use a lower-level signing method (RS256) initially for compatibility
-- Test with a simple email subject format first
+- Verify the JWT is valid and not expired before transmission
+- Test the receiver endpoint independently to ensure it's accessible
 - Verify the receiver endpoint accepts the `/events` path if using addressSuffix
-- Check receiver logs for detailed error messages
+- Check receiver logs for detailed error messages about JWT validation
 
 ## References
 

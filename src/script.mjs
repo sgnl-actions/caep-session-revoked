@@ -1,21 +1,4 @@
-import { createBuilder } from '@sgnl-ai/secevent';
 import { transmitSET } from '@sgnl-ai/set-transmitter';
-import { createPrivateKey } from 'crypto';
-
-// Event type constant
-const SESSION_REVOKED_EVENT = 'https://schemas.openid.net/secevent/caep/event-type/session-revoked';
-
-
-/**
- * Parse subject JSON string
- */
-function parseSubject(subjectStr) {
-  try {
-    return JSON.parse(subjectStr);
-  } catch (error) {
-    throw new Error(`Invalid subject JSON: ${error.message}`);
-  }
-}
 
 /**
  * Build destination URL
@@ -33,95 +16,33 @@ export default {
   /**
    * Transmit a CAEP Session Revoked event
    * @param {Object} params - Input parameters
-   * @param {string} params.audience - Intended recipient of the SET
-   * @param {string} params.subject - Subject identifier JSON
+   * @param {string} params.jwt - Pre-signed JWT Security Event Token
    * @param {string} params.address - Destination URL for the SET transmission
-   * @param {string} params.initiatingEntity - What initiated the revocation: policy, admin, user, system
-   * @param {string} params.reasonAdmin - Administrative reason for revocation
-   * @param {string} params.reasonUser - User-facing reason for revocation
-   * @param {number} params.eventTimestamp - Unix timestamp when the session was revoked
    * @param {string} params.addressSuffix - Optional suffix to append to the address
-   * @param {string} params.issuer - JWT issuer identifier
-   * @param {string} params.signingMethod - JWT signing algorithm
    * @param {string} params.userAgent - User-Agent header for HTTP requests
    *
    * @param {Object} context - Execution context with secrets and environment
-   * @param {string} context.secrets.SSF_KEY - RSA private key in PEM format for signing the JWT
-   * @param {string} context.secrets.SSF_KEY_ID - Key identifier to include in the JWT header
    * @param {string} context.secrets.BEARER_AUTH_TOKEN - Bearer token for authenticating with the SET receiver
    *
    * @returns {Promise<Object>} Action result
    */
   invoke: async (params, context) => {
     // Validate required parameters
-    if (!params.audience) {
-      throw new Error('audience is required');
-    }
-    if (!params.subject) {
-      throw new Error('subject is required');
+    if (!params.jwt) {
+      throw new Error('jwt is required');
     }
     if (!params.address) {
       throw new Error('address is required');
     }
 
     // Get secrets
-    const ssfKey = context.secrets?.SSF_KEY;
-    const ssfKeyId = context.secrets?.SSF_KEY_ID;
     const authToken = context.secrets?.BEARER_AUTH_TOKEN;
-
-    if (!ssfKey) {
-      throw new Error('SSF_KEY secret is required');
-    }
-    if (!ssfKeyId) {
-      throw new Error('SSF_KEY_ID secret is required');
-    }
-
-    // Parse parameters
-    const issuer = params.issuer || 'https://sgnl.ai/';
-    const signingMethod = params.signingMethod || 'RS256';
-    const subject = parseSubject(params.subject);
-
-    // Build event payload
-    const eventPayload = {
-      event_timestamp: params.eventTimestamp || Math.floor(Date.now() / 1000)
-    };
-
-    // Add optional event claims
-    if (params.initiatingEntity) {
-      eventPayload.initiating_entity = params.initiatingEntity;
-    }
-    if (params.reasonAdmin) {
-      eventPayload.reason_admin = params.reasonAdmin;
-    }
-    if (params.reasonUser) {
-      eventPayload.reason_user = params.reasonUser;
-    }
-
-    // Create the SET
-    const builder = createBuilder();
-
-    builder
-      .withIssuer(issuer)
-      .withAudience(params.audience)
-      .withIat(Math.floor(Date.now() / 1000))
-      .withClaim('sub_id', subject)  // CAEP 3.0 format
-      .withEvent(SESSION_REVOKED_EVENT, eventPayload);
-
-    // Sign the SET
-    const privateKeyObject = createPrivateKey(ssfKey);
-    const signingKey = {
-      key: privateKeyObject,
-      alg: signingMethod,
-      kid: ssfKeyId
-    };
-
-    const { jwt } = await builder.sign(signingKey);
 
     // Build destination URL
     const url = buildUrl(params.address, params.addressSuffix);
 
     // Transmit the SET using the library
-    return await transmitSET(jwt, url, {
+    return await transmitSET(params.jwt, url, {
       authToken,
       headers: {
         'User-Agent': params.userAgent || 'SGNL-Action-Framework/1.0'
