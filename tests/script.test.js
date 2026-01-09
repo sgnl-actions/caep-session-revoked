@@ -13,18 +13,22 @@ jest.unstable_mockModule('@sgnl-ai/set-transmitter', () => ({
 // Mock @sgnl-actions/utils module
 jest.unstable_mockModule('@sgnl-actions/utils', () => ({
   resolveJSONPathTemplates: jest.fn((params) => ({ result: params, errors: [] })),
-  signSET: jest.fn().mockResolvedValue('mock.jwt.token')
+  signSET: jest.fn().mockResolvedValue('mock.jwt.token'),
+  getBaseURL: jest.fn((params, context) => params.address || context.environment?.ADDRESS)
 }));
 
 // Import after mocking
 const { transmitSET } = await import('@sgnl-ai/set-transmitter');
-const { signSET } = await import('@sgnl-actions/utils');
+const { signSET, getBaseURL } = await import('@sgnl-actions/utils');
 const script = (await import('../src/script.mjs')).default;
 
 describe('CAEP Session Revoked Transmitter', () => {
   const mockContext = {
+    environment: {
+      ADDRESS: 'https://receiver.example.com/events'
+    },
     secrets: {
-      AUTH_TOKEN: 'Bearer test-token'
+      BEARER_AUTH_TOKEN: 'Bearer test-token'
     }
   };
 
@@ -32,6 +36,8 @@ describe('CAEP Session Revoked Transmitter', () => {
     jest.clearAllMocks();
     signSET.mockClear();
     signSET.mockResolvedValue('mock.jwt.token');
+    getBaseURL.mockClear();
+    getBaseURL.mockImplementation((params, context) => params.address || context.environment?.ADDRESS);
     transmitSET.mockResolvedValue({
       status: 'success',
       statusCode: 200,
@@ -43,8 +49,7 @@ describe('CAEP Session Revoked Transmitter', () => {
   describe('invoke', () => {
     const validParams = {
       audience: 'https://example.com',
-      subject: '{"format":"email","email":"user@example.com"}',
-      address: 'https://receiver.example.com/events'
+      subject: '{"format":"email","email":"user@example.com"}'
     };
 
     test('should successfully transmit a session revoked event', async () => {
@@ -77,10 +82,9 @@ describe('CAEP Session Revoked Transmitter', () => {
     test('should include optional event claims when provided', async () => {
       const params = {
         ...validParams,
-        initiatingEntity: 'admin',
-        reasonAdmin: 'Security policy violation',
-        reasonUser: 'Your session has been terminated for security reasons',
-        eventTimestamp: 1234567890
+        initiating_entity: 'admin',
+        reason_admin: 'Security policy violation',
+        reason_user: 'Your session has been terminated for security reasons'
       };
 
       await script.invoke(params, mockContext);
@@ -90,28 +94,13 @@ describe('CAEP Session Revoked Transmitter', () => {
         expect.objectContaining({
           events: {
             'https://schemas.openid.net/secevent/caep/event-type/session-revoked': expect.objectContaining({
-              event_timestamp: 1234567890,
+              event_timestamp: expect.any(Number),
               initiating_entity: 'admin',
               reason_admin: 'Security policy violation',
               reason_user: 'Your session has been terminated for security reasons'
             })
           }
         })
-      );
-    });
-
-    test('should append address suffix when provided', async () => {
-      const params = {
-        ...validParams,
-        addressSuffix: '/v1/events'
-      };
-
-      await script.invoke(params, mockContext);
-
-      expect(transmitSET).toHaveBeenCalledWith(
-        'mock.jwt.token',
-        'https://receiver.example.com/events/v1/events',
-        expect.any(Object)
       );
     });
 
@@ -129,9 +118,12 @@ describe('CAEP Session Revoked Transmitter', () => {
 
     test('should handle auth token without Bearer prefix', async () => {
       const context = {
+        environment: {
+          ...mockContext.environment
+        },
         secrets: {
           ...mockContext.secrets,
-          AUTH_TOKEN: 'test-token-no-prefix'
+          BEARER_AUTH_TOKEN: 'test-token-no-prefix'
         }
       };
 
@@ -144,49 +136,6 @@ describe('CAEP Session Revoked Transmitter', () => {
           authToken: 'test-token-no-prefix'
         })
       );
-    });
-
-    test('should use custom user agent when provided', async () => {
-      const params = {
-        ...validParams,
-        userAgent: 'CustomAgent/1.0'
-      };
-
-      await script.invoke(params, mockContext);
-
-      expect(transmitSET).toHaveBeenCalledWith(
-        'mock.jwt.token',
-        'https://receiver.example.com/events',
-        expect.objectContaining({
-          headers: {
-            'User-Agent': 'CustomAgent/1.0'
-          }
-        })
-      );
-    });
-
-    test('should throw error for missing audience', async () => {
-      const params = { ...validParams };
-      delete params.audience;
-
-      await expect(script.invoke(params, mockContext))
-        .rejects.toThrow('audience is required');
-    });
-
-    test('should throw error for missing subject', async () => {
-      const params = { ...validParams };
-      delete params.subject;
-
-      await expect(script.invoke(params, mockContext))
-        .rejects.toThrow('subject is required');
-    });
-
-    test('should throw error for missing address', async () => {
-      const params = { ...validParams };
-      delete params.address;
-
-      await expect(script.invoke(params, mockContext))
-        .rejects.toThrow('address is required');
     });
 
     test('should throw error for invalid subject JSON', async () => {
@@ -254,41 +203,36 @@ describe('CAEP Session Revoked Transmitter', () => {
         .rejects.toThrow('SET transmission failed: 504 Gateway Timeout');
     });
 
-    test('should properly format URL with trailing slash in address', async () => {
-      const params = {
-        ...validParams,
-        address: 'https://receiver.example.com/',
-        addressSuffix: '/events'
-      };
-
-      await script.invoke(params, mockContext);
-
-      expect(transmitSET).toHaveBeenCalledWith(
-        'mock.jwt.token',
-        'https://receiver.example.com/events',
-        expect.any(Object)
-      );
-    });
-
-    test('should properly format URL without leading slash in suffix', async () => {
-      const params = {
-        ...validParams,
-        address: 'https://receiver.example.com',
-        addressSuffix: 'events'
-      };
-
-      await script.invoke(params, mockContext);
-
-      expect(transmitSET).toHaveBeenCalledWith(
-        'mock.jwt.token',
-        'https://receiver.example.com/events',
-        expect.any(Object)
-      );
-    });
-
     test('should transmit JWT to correct URL', async () => {
       await script.invoke(validParams, mockContext);
 
+      expect(transmitSET).toHaveBeenCalledWith(
+        'mock.jwt.token',
+        'https://receiver.example.com/events',
+        expect.any(Object)
+      );
+    });
+
+    test('should use address from params when provided', async () => {
+      const params = {
+        ...validParams,
+        address: 'https://custom.example.com/events'
+      };
+
+      await script.invoke(params, mockContext);
+
+      expect(getBaseURL).toHaveBeenCalledWith(params, mockContext);
+      expect(transmitSET).toHaveBeenCalledWith(
+        'mock.jwt.token',
+        'https://custom.example.com/events',
+        expect.any(Object)
+      );
+    });
+
+    test('should use ADDRESS from environment when params.address not provided', async () => {
+      await script.invoke(validParams, mockContext);
+
+      expect(getBaseURL).toHaveBeenCalledWith(validParams, mockContext);
       expect(transmitSET).toHaveBeenCalledWith(
         'mock.jwt.token',
         'https://receiver.example.com/events',

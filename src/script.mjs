@@ -1,5 +1,5 @@
 import { transmitSET } from '@sgnl-ai/set-transmitter';
-import { resolveJSONPathTemplates, signSET } from '@sgnl-actions/utils';
+import { resolveJSONPathTemplates, signSET, getBaseURL } from '@sgnl-actions/utils';
 
 // Event type constant
 const SESSION_REVOKED_EVENT = 'https://schemas.openid.net/secevent/caep/event-type/session-revoked';
@@ -16,21 +16,41 @@ function parseSubject(subjectStr) {
   }
 }
 
-/**
- * Build destination URL
- */
-function buildUrl(address, suffix) {
-  if (!suffix) {
-    return address;
-  }
-  const baseUrl = address.endsWith('/') ? address.slice(0, -1) : address;
-  const cleanSuffix = suffix.startsWith('/') ? suffix.slice(1) : suffix;
-  return `${baseUrl}/${cleanSuffix}`;
-}
-
 export default {
   /**
-   * Transmit a CAEP Session Revoked event
+   * Main execution handler - transmits a CAEP Session Revoked event as a Security Event Token
+   *
+   * @param {Object} params - Job input parameters
+   * @param {string} params.subject - Subject identifier JSON (e.g., {"format":"email","email":"user@example.com"})
+   * @param {string} params.audience - Intended recipient of the SET (e.g., https://customer.okta.com/)
+   * @param {string} params.address - Optional destination URL override (defaults to ADDRESS environment variable)
+   * @param {string} params.initiating_entity - What initiated the session revocation (optional)
+   * @param {string} params.reason_admin - Administrative reason for revocation (optional)
+   * @param {string} params.reason_user - User-facing reason for revocation (optional)
+   *
+   * @param {Object} context - Execution context with secrets and environment
+   * @param {Object} context.environment - Environment configuration
+   * @param {string} context.environment.ADDRESS - Default destination URL for the SET transmission
+   *
+   * The configured auth type will determine which of the following environment variables and secrets are available
+   * @param {string} context.secrets.BEARER_AUTH_TOKEN
+   *
+   * @param {string} context.secrets.BASIC_USERNAME
+   * @param {string} context.secrets.BASIC_PASSWORD
+   *
+   * @param {string} context.secrets.OAUTH2_CLIENT_CREDENTIALS_CLIENT_SECRET
+   * @param {string} context.environment.OAUTH2_CLIENT_CREDENTIALS_AUDIENCE
+   * @param {string} context.environment.OAUTH2_CLIENT_CREDENTIALS_AUTH_STYLE
+   * @param {string} context.environment.OAUTH2_CLIENT_CREDENTIALS_CLIENT_ID
+   * @param {string} context.environment.OAUTH2_CLIENT_CREDENTIALS_SCOPE
+   * @param {string} context.environment.OAUTH2_CLIENT_CREDENTIALS_TOKEN_URL
+   *
+   * @param {string} context.secrets.OAUTH2_AUTHORIZATION_CODE_ACCESS_TOKEN
+   *
+   * @param {Object} context.crypto - Cryptographic operations API
+   * @param {Function} context.crypto.signJWT - Function to sign JWTs with server-side keys
+   *
+   * @returns {Object} Transmission result with status, statusCode, body, and retryable flag
    */
   invoke: async (params, context) => {
     const jobContext = context.data || {};
@@ -38,43 +58,34 @@ export default {
     // Resolve JSONPath templates in params
     const { result: resolvedParams, errors } = resolveJSONPathTemplates(params, jobContext);
     if (errors.length > 0) {
-     console.warn('Template resolution errors:', errors);
+      console.warn('Template resolution errors:', errors);
     }
 
-    // Validate required parameters
-    if (!resolvedParams.audience) {
-      throw new Error('audience is required');
-    }
-    if (!resolvedParams.subject) {
-      throw new Error('subject is required');
-    }
-    if (!resolvedParams.address) {
-      throw new Error('address is required');
-    }
+    const address = getBaseURL(resolvedParams, context);
 
     // Get secrets
-    const authToken = context.secrets?.AUTH_TOKEN;
+    const authToken = context.secrets?.BEARER_AUTH_TOKEN;
 
     // Parse parameters
     const subject = parseSubject(resolvedParams.subject);
 
     // Build event payload
     const eventPayload = {
-      event_timestamp: resolvedParams.eventTimestamp || Math.floor(Date.now() / 1000)
+      event_timestamp: Math.floor(Date.now() / 1000)
     };
 
     // Add optional event claims
-    if (resolvedParams.initiatingEntity) {
-      eventPayload.initiating_entity = resolvedParams.initiatingEntity;
+    if (resolvedParams.initiating_entity) {
+      eventPayload.initiating_entity = resolvedParams.initiating_entity;
     }
-    if (resolvedParams.reasonAdmin) {
-      eventPayload.reason_admin = resolvedParams.reasonAdmin;
+    if (resolvedParams.reason_admin) {
+      eventPayload.reason_admin = resolvedParams.reason_admin;
     }
-    if (resolvedParams.reasonUser) {
-      eventPayload.reason_user = resolvedParams.reasonUser;
+    if (resolvedParams.reason_user) {
+      eventPayload.reason_user = resolvedParams.reason_user;
     }
 
-    // Build the SET payload 
+    // Build the SET payload (reserved claims will be added during signing)
     const setPayload = {
       aud: resolvedParams.audience,
       sub_id: subject,  // CAEP 3.0 format
@@ -85,14 +96,11 @@ export default {
 
     const jwt = await signSET(context, setPayload);
 
-    // Build destination URL
-    const url = buildUrl(resolvedParams.address, resolvedParams.addressSuffix);
-
-    // Transmit the SET using the library
-    return await transmitSET(jwt, url, {
+    // Transmit the SET
+    return await transmitSET(jwt, address, {
       authToken,
       headers: {
-        'User-Agent': resolvedParams.userAgent || 'SGNL-Action-Framework/1.0'
+        'User-Agent': 'SGNL-CAEP-Hub/2.0'
       }
     });
   },
