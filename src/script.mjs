@@ -1,6 +1,4 @@
-import { createBuilder } from '@sgnl-ai/secevent';
 import { transmitSET } from '@sgnl-ai/set-transmitter';
-import { createPrivateKey } from 'crypto';
 import { resolveJSONPathTemplates} from '@sgnl-actions/utils';
 
 // Event type constant
@@ -55,20 +53,9 @@ export default {
     }
 
     // Get secrets
-    const ssfKey = context.secrets?.SSF_KEY;
-    const ssfKeyId = context.secrets?.SSF_KEY_ID;
     const authToken = context.secrets?.AUTH_TOKEN;
 
-    if (!ssfKey) {
-      throw new Error('SSF_KEY secret is required');
-    }
-    if (!ssfKeyId) {
-      throw new Error('SSF_KEY_ID secret is required');
-    }
-
     // Parse parameters
-    const issuer = resolvedParams.issuer || 'https://sgnl.ai/';
-    const signingMethod = resolvedParams.signingMethod || 'RS256';
     const subject = parseSubject(resolvedParams.subject);
 
     // Build event payload
@@ -87,25 +74,19 @@ export default {
       eventPayload.reason_user = resolvedParams.reasonUser;
     }
 
-    // Create the SET
-    const builder = createBuilder();
-
-    builder
-      .withIssuer(issuer)
-      .withAudience(resolvedParams.audience)
-      .withIat(Math.floor(Date.now() / 1000))
-      .withClaim('sub_id', subject)  // CAEP 3.0 format
-      .withEvent(SESSION_REVOKED_EVENT, eventPayload);
-
-    // Sign the SET
-    const privateKeyObject = createPrivateKey(ssfKey);
-    const signingKey = {
-      key: privateKeyObject,
-      alg: signingMethod,
-      kid: ssfKeyId
+    // Build the SET payload (crypto service will add iss, iat, jti)
+    const setPayload = {
+      aud: resolvedParams.audience,
+      sub_id: subject,  // CAEP 3.0 format
+      events: {
+        [SESSION_REVOKED_EVENT]: eventPayload
+      }
     };
 
-    const { jwt } = await builder.sign(signingKey);
+    // Sign the SET using the runner's crypto.signJWT()
+    const jwt = await context.crypto.signJWT(setPayload, {
+      typ: 'secevent+jwt'
+    });
 
     // Build destination URL
     const url = buildUrl(resolvedParams.address, resolvedParams.addressSuffix);

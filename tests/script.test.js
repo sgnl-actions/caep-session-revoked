@@ -1,20 +1,5 @@
 import { jest } from '@jest/globals';
 
-// Mock the @sgnl-ai/secevent module
-jest.unstable_mockModule('@sgnl-ai/secevent', () => {
-  const mockBuilder = {
-    withIssuer: jest.fn().mockReturnThis(),
-    withAudience: jest.fn().mockReturnThis(),
-    withIat: jest.fn().mockReturnThis(),
-    withClaim: jest.fn().mockReturnThis(),
-    withEvent: jest.fn().mockReturnThis(),
-    sign: jest.fn().mockResolvedValue({ jwt: 'mock.jwt.token' })
-  };
-  return {
-    createBuilder: jest.fn(() => mockBuilder)
-  };
-});
-
 // Mock @sgnl-ai/set-transmitter module
 jest.unstable_mockModule('@sgnl-ai/set-transmitter', () => ({
   transmitSET: jest.fn().mockResolvedValue({
@@ -25,30 +10,25 @@ jest.unstable_mockModule('@sgnl-ai/set-transmitter', () => ({
   })
 }));
 
-// Mock crypto module
-jest.unstable_mockModule('crypto', () => ({
-  createPrivateKey: jest.fn(() => 'mock-private-key')
-}));
-
 // Import after mocking
-const { createBuilder } = await import('@sgnl-ai/secevent');
-const { createPrivateKey } = await import('crypto');
 const { transmitSET } = await import('@sgnl-ai/set-transmitter');
 const script = (await import('../src/script.mjs')).default;
 
 describe('CAEP Session Revoked Transmitter', () => {
-  let mockBuilder;
+  const mockSignJWT = jest.fn().mockResolvedValue('mock.jwt.token');
   const mockContext = {
     secrets: {
-      SSF_KEY: '-----BEGIN RSA PRIVATE KEY-----\nMOCK_KEY\n-----END RSA PRIVATE KEY-----',
-      SSF_KEY_ID: 'test-key-id',
       AUTH_TOKEN: 'Bearer test-token'
+    },
+    crypto: {
+      signJWT: mockSignJWT
     }
   };
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockBuilder = createBuilder();
+    mockSignJWT.mockClear();
+    mockSignJWT.mockResolvedValue('mock.jwt.token');
     transmitSET.mockResolvedValue({
       status: 'success',
       statusCode: 200,
@@ -74,18 +54,22 @@ describe('CAEP Session Revoked Transmitter', () => {
         retryable: false
       });
 
-      expect(createBuilder).toHaveBeenCalled();
-      expect(mockBuilder.withIssuer).toHaveBeenCalledWith('https://sgnl.ai/');
-      expect(mockBuilder.withAudience).toHaveBeenCalledWith('https://example.com');
-      expect(mockBuilder.withClaim).toHaveBeenCalledWith('sub_id', {
-        format: 'email',
-        email: 'user@example.com'
-      });
-      expect(mockBuilder.withEvent).toHaveBeenCalledWith(
-        'https://schemas.openid.net/secevent/caep/event-type/session-revoked',
-        expect.objectContaining({
-          event_timestamp: expect.any(Number)
-        })
+      expect(mockSignJWT).toHaveBeenCalledWith(
+        {
+          aud: 'https://example.com',
+          sub_id: {
+            format: 'email',
+            email: 'user@example.com'
+          },
+          events: {
+            'https://schemas.openid.net/secevent/caep/event-type/session-revoked': expect.objectContaining({
+              event_timestamp: expect.any(Number)
+            })
+          }
+        },
+        {
+          typ: 'secevent+jwt'
+        }
       );
     });
 
@@ -100,32 +84,19 @@ describe('CAEP Session Revoked Transmitter', () => {
 
       await script.invoke(params, mockContext);
 
-      expect(mockBuilder.withEvent).toHaveBeenCalledWith(
-        'https://schemas.openid.net/secevent/caep/event-type/session-revoked',
+      expect(mockSignJWT).toHaveBeenCalledWith(
         expect.objectContaining({
-          event_timestamp: 1234567890,
-          initiating_entity: 'admin',
-          reason_admin: 'Security policy violation',
-          reason_user: 'Your session has been terminated for security reasons'
-        })
+          events: {
+            'https://schemas.openid.net/secevent/caep/event-type/session-revoked': expect.objectContaining({
+              event_timestamp: 1234567890,
+              initiating_entity: 'admin',
+              reason_admin: 'Security policy violation',
+              reason_user: 'Your session has been terminated for security reasons'
+            })
+          }
+        }),
+        expect.any(Object)
       );
-    });
-
-    test('should use custom issuer and signing method when provided', async () => {
-      const params = {
-        ...validParams,
-        issuer: 'https://custom.issuer.com',
-        signingMethod: 'RS512'
-      };
-
-      await script.invoke(params, mockContext);
-
-      expect(mockBuilder.withIssuer).toHaveBeenCalledWith('https://custom.issuer.com');
-      expect(mockBuilder.sign).toHaveBeenCalledWith({
-        key: 'mock-private-key',
-        alg: 'RS512',
-        kid: 'test-key-id'
-      });
     });
 
     test('should append address suffix when provided', async () => {
@@ -160,7 +131,8 @@ describe('CAEP Session Revoked Transmitter', () => {
         secrets: {
           ...mockContext.secrets,
           AUTH_TOKEN: 'test-token-no-prefix'
-        }
+        },
+        crypto: mockContext.crypto
       };
 
       await script.invoke(validParams, context);
@@ -227,27 +199,6 @@ describe('CAEP Session Revoked Transmitter', () => {
         .rejects.toThrow('Invalid subject JSON');
     });
 
-    test('should throw error for missing SSF_KEY secret', async () => {
-      const context = {
-        secrets: {
-          SSF_KEY_ID: 'test-key-id'
-        }
-      };
-
-      await expect(script.invoke(validParams, context))
-        .rejects.toThrow('SSF_KEY secret is required');
-    });
-
-    test('should throw error for missing SSF_KEY_ID secret', async () => {
-      const context = {
-        secrets: {
-          SSF_KEY: 'mock-key'
-        }
-      };
-
-      await expect(script.invoke(validParams, context))
-        .rejects.toThrow('SSF_KEY_ID secret is required');
-    });
 
     test('should handle non-retryable HTTP errors', async () => {
       transmitSET.mockResolvedValue({
@@ -342,14 +293,6 @@ describe('CAEP Session Revoked Transmitter', () => {
         'mock.jwt.token',
         'https://receiver.example.com/events',
         expect.any(Object)
-      );
-    });
-
-    test('should create private key from PEM string', async () => {
-      await script.invoke(validParams, mockContext);
-
-      expect(createPrivateKey).toHaveBeenCalledWith(
-        '-----BEGIN RSA PRIVATE KEY-----\nMOCK_KEY\n-----END RSA PRIVATE KEY-----'
       );
     });
   });
