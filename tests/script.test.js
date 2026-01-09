@@ -14,12 +14,13 @@ jest.unstable_mockModule('@sgnl-ai/set-transmitter', () => ({
 jest.unstable_mockModule('@sgnl-actions/utils', () => ({
   resolveJSONPathTemplates: jest.fn((params) => ({ result: params, errors: [] })),
   signSET: jest.fn().mockResolvedValue('mock.jwt.token'),
-  getBaseURL: jest.fn((params, context) => params.address || context.environment?.ADDRESS)
+  getBaseURL: jest.fn((params, context) => params.address || context.environment?.ADDRESS),
+  getAuthorizationHeader: jest.fn().mockResolvedValue('Bearer test-token')
 }));
 
 // Import after mocking
 const { transmitSET } = await import('@sgnl-ai/set-transmitter');
-const { signSET, getBaseURL } = await import('@sgnl-actions/utils');
+const { signSET, getBaseURL, getAuthorizationHeader } = await import('@sgnl-actions/utils');
 const script = (await import('../src/script.mjs')).default;
 
 describe('CAEP Session Revoked Transmitter', () => {
@@ -38,6 +39,8 @@ describe('CAEP Session Revoked Transmitter', () => {
     signSET.mockResolvedValue('mock.jwt.token');
     getBaseURL.mockClear();
     getBaseURL.mockImplementation((params, context) => params.address || context.environment?.ADDRESS);
+    getAuthorizationHeader.mockClear();
+    getAuthorizationHeader.mockResolvedValue('Bearer test-token');
     transmitSET.mockResolvedValue({
       status: 'success',
       statusCode: 200,
@@ -107,33 +110,33 @@ describe('CAEP Session Revoked Transmitter', () => {
     test('should include auth token in request', async () => {
       await script.invoke(validParams, mockContext);
 
+      expect(getAuthorizationHeader).toHaveBeenCalledWith(mockContext);
       expect(transmitSET).toHaveBeenCalledWith(
         'mock.jwt.token',
         'https://receiver.example.com/events',
         expect.objectContaining({
-          authToken: 'Bearer test-token'
+          headers: expect.objectContaining({
+            'Authorization': 'Bearer test-token',
+            'User-Agent': 'SGNL-CAEP-Hub/2.0'
+          })
         })
       );
     });
 
     test('should handle auth token without Bearer prefix', async () => {
-      const context = {
-        environment: {
-          ...mockContext.environment
-        },
-        secrets: {
-          ...mockContext.secrets,
-          BEARER_AUTH_TOKEN: 'test-token-no-prefix'
-        }
-      };
+      getAuthorizationHeader.mockResolvedValue('test-token-no-prefix');
 
-      await script.invoke(validParams, context);
+      await script.invoke(validParams, mockContext);
 
+      expect(getAuthorizationHeader).toHaveBeenCalledWith(mockContext);
       expect(transmitSET).toHaveBeenCalledWith(
         'mock.jwt.token',
         'https://receiver.example.com/events',
         expect.objectContaining({
-          authToken: 'test-token-no-prefix'
+          headers: expect.objectContaining({
+            'Authorization': 'test-token-no-prefix',
+            'User-Agent': 'SGNL-CAEP-Hub/2.0'
+          })
         })
       );
     });

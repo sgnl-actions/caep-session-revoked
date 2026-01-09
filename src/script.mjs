@@ -1,5 +1,5 @@
 import { transmitSET } from '@sgnl-ai/set-transmitter';
-import { resolveJSONPathTemplates, signSET, getBaseURL } from '@sgnl-actions/utils';
+import { resolveJSONPathTemplates, signSET, getBaseURL, getAuthorizationHeader } from '@sgnl-actions/utils';
 
 // Event type constant
 const SESSION_REVOKED_EVENT = 'https://schemas.openid.net/secevent/caep/event-type/session-revoked';
@@ -62,9 +62,7 @@ export default {
     }
 
     const address = getBaseURL(resolvedParams, context);
-
-    // Get secrets
-    const authToken = context.secrets?.BEARER_AUTH_TOKEN;
+    const authHeader = await getAuthorizationHeader(context);
 
     // Parse parameters
     const subject = parseSubject(resolvedParams.subject);
@@ -98,8 +96,8 @@ export default {
 
     // Transmit the SET
     return await transmitSET(jwt, address, {
-      authToken,
       headers: {
+        'Authorization': authHeader,
         'User-Agent': 'SGNL-CAEP-Hub/2.0'
       }
     });
