@@ -3,14 +3,6 @@ description: Transmits CAEP Session Revoked events as Security Event Tokens (SET
 
 # Input parameters for the session revoked event
 inputs:
-  audience:
-    type: text
-    description: Intended recipient of the SET (e.g., https://customer.okta.com/)
-    required: true
-    validation:
-      min: 1
-      max: 500
-
   subject:
     type: text
     description: Subject identifier JSON (e.g., {"format":"email","email":"user@example.com"})
@@ -19,82 +11,46 @@ inputs:
       min: 1
       max: 2000
 
-  initiatingEntity:
+  audience:
     type: text
-    description: What initiated the session revocation (policy, admin, user)
+    description: Intended recipient of the SET (e.g., https://customer.okta.com/)
+    required: true
+    validation:
+      min: 1
+      max: 500
+
+  address:
+    type: text
+    description: Optional destination URL override (defaults to ADDRESS environment variable)
     required: false
     validation:
-      enum: ["policy", "admin", "user", "system"]
+      min: 1
+      max: 100
 
-  reasonAdmin:
+  initiating_entity:
+    type: text
+    description: What initiated the session revocation (policy, admin, user, system)
+    required: false
+    validation:
+      max: 100
+
+  reason_admin:
     type: text
     description: Administrative reason for revocation (shown to admins)
     required: false
     validation:
       max: 1000
 
-  reasonUser:
+  reason_user:
     type: text
     description: User-facing reason for revocation (shown to users)
     required: false
     validation:
       max: 1000
 
-  eventTimestamp:
-    type: number
-    description: Unix timestamp when the session was revoked (defaults to now)
-    required: false
-
-  address:
-    type: text
-    description: Destination URL for the SET transmission
-    required: true
-    validation:
-      min: 1
-      max: 500
-      regex: ^https?://.*
-
-  addressSuffix:
-    type: text
-    description: Optional suffix to append to the address
-    required: false
-    validation:
-      max: 100
-
-  issuer:
-    type: text
-    description: JWT issuer identifier (default https://sgnl.ai/)
-    required: false
-    validation:
-      max: 500
-
-  signingMethod:
-    type: text
-    description: JWT signing algorithm (default RS256)
-    required: false
-    validation:
-      enum: ["RS256", "RS384", "RS512", "ES256", "ES384", "ES512"]
-
-  userAgent:
-    type: text
-    description: User-Agent header for HTTP requests
-    required: false
-    validation:
-      max: 200
-
 # Secrets required for operation
 secrets:
-  SSF_KEY:
-    type: text
-    description: RSA private key for signing the JWT (PEM format)
-    required: true
-
-  SSF_KEY_ID:
-    type: text
-    description: Key identifier for the JWT header
-    required: true
-
-  AUTH_TOKEN:
+  BEARER_AUTH_TOKEN:
     type: text
     description: Bearer token for authenticating with the SET receiver
     required: false
