@@ -1,5 +1,5 @@
 import { transmitSET } from '@sgnl-ai/set-transmitter';
-import { resolveJSONPathTemplates} from '@sgnl-actions/utils';
+import { resolveJSONPathTemplates, signSET } from '@sgnl-actions/utils';
 
 // Event type constant
 const SESSION_REVOKED_EVENT = 'https://schemas.openid.net/secevent/caep/event-type/session-revoked';
@@ -74,7 +74,7 @@ export default {
       eventPayload.reason_user = resolvedParams.reasonUser;
     }
 
-    // Build the SET payload (crypto service will add iss, iat, jti)
+    // Build the SET payload 
     const setPayload = {
       aud: resolvedParams.audience,
       sub_id: subject,  // CAEP 3.0 format
@@ -83,10 +83,7 @@ export default {
       }
     };
 
-    // Sign the SET using the runner's crypto.signJWT()
-    const jwt = await context.crypto.signJWT(setPayload, {
-      typ: 'secevent+jwt'
-    });
+    const jwt = await signSET(context, setPayload);
 
     // Build destination URL
     const url = buildUrl(resolvedParams.address, resolvedParams.addressSuffix);

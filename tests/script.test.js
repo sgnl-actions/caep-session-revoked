@@ -10,25 +10,28 @@ jest.unstable_mockModule('@sgnl-ai/set-transmitter', () => ({
   })
 }));
 
+// Mock @sgnl-actions/utils module
+jest.unstable_mockModule('@sgnl-actions/utils', () => ({
+  resolveJSONPathTemplates: jest.fn((params) => ({ result: params, errors: [] })),
+  signSET: jest.fn().mockResolvedValue('mock.jwt.token')
+}));
+
 // Import after mocking
 const { transmitSET } = await import('@sgnl-ai/set-transmitter');
+const { signSET } = await import('@sgnl-actions/utils');
 const script = (await import('../src/script.mjs')).default;
 
 describe('CAEP Session Revoked Transmitter', () => {
-  const mockSignJWT = jest.fn().mockResolvedValue('mock.jwt.token');
   const mockContext = {
     secrets: {
       AUTH_TOKEN: 'Bearer test-token'
-    },
-    crypto: {
-      signJWT: mockSignJWT
     }
   };
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockSignJWT.mockClear();
-    mockSignJWT.mockResolvedValue('mock.jwt.token');
+    signSET.mockClear();
+    signSET.mockResolvedValue('mock.jwt.token');
     transmitSET.mockResolvedValue({
       status: 'success',
       statusCode: 200,
@@ -54,7 +57,8 @@ describe('CAEP Session Revoked Transmitter', () => {
         retryable: false
       });
 
-      expect(mockSignJWT).toHaveBeenCalledWith(
+      expect(signSET).toHaveBeenCalledWith(
+        mockContext,
         {
           aud: 'https://example.com',
           sub_id: {
@@ -66,9 +70,6 @@ describe('CAEP Session Revoked Transmitter', () => {
               event_timestamp: expect.any(Number)
             })
           }
-        },
-        {
-          typ: 'secevent+jwt'
         }
       );
     });
@@ -84,7 +85,8 @@ describe('CAEP Session Revoked Transmitter', () => {
 
       await script.invoke(params, mockContext);
 
-      expect(mockSignJWT).toHaveBeenCalledWith(
+      expect(signSET).toHaveBeenCalledWith(
+        mockContext,
         expect.objectContaining({
           events: {
             'https://schemas.openid.net/secevent/caep/event-type/session-revoked': expect.objectContaining({
@@ -94,8 +96,7 @@ describe('CAEP Session Revoked Transmitter', () => {
               reason_user: 'Your session has been terminated for security reasons'
             })
           }
-        }),
-        expect.any(Object)
+        })
       );
     });
 
@@ -131,8 +132,7 @@ describe('CAEP Session Revoked Transmitter', () => {
         secrets: {
           ...mockContext.secrets,
           AUTH_TOKEN: 'test-token-no-prefix'
-        },
-        crypto: mockContext.crypto
+        }
       };
 
       await script.invoke(validParams, context);
