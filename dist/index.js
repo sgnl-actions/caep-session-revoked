@@ -264,6 +264,162 @@ async function transmitSET(jwt, url, options = {}) {
 }
 
 /**
+ * SGNL Actions - Authentication Utilities
+ *
+ * Shared authentication utilities for SGNL actions.
+ * Supports: Bearer Token, Basic Auth, OAuth2 Client Credentials, OAuth2 Authorization Code
+ */
+
+/**
+ * Get OAuth2 access token using client credentials flow
+ * @param {Object} config - OAuth2 configuration
+ * @param {string} config.tokenUrl - Token endpoint URL
+ * @param {string} config.clientId - Client ID
+ * @param {string} config.clientSecret - Client secret
+ * @param {string} [config.scope] - OAuth2 scope
+ * @param {string} [config.audience] - OAuth2 audience
+ * @param {string} [config.authStyle] - Auth style: 'InParams' or 'InHeader' (default)
+ * @returns {Promise<string>} Access token
+ */
+async function getClientCredentialsToken(config) {
+  const { tokenUrl, clientId, clientSecret, scope, audience, authStyle } = config;
+
+  if (!tokenUrl || !clientId || !clientSecret) {
+    throw new Error('OAuth2 Client Credentials flow requires tokenUrl, clientId, and clientSecret');
+  }
+
+  const params = new URLSearchParams();
+  params.append('grant_type', 'client_credentials');
+
+  if (scope) {
+    params.append('scope', scope);
+  }
+
+  if (audience) {
+    params.append('audience', audience);
+  }
+
+  const headers = {
+    'Content-Type': 'application/x-www-form-urlencoded',
+    'Accept': 'application/json'
+  };
+
+  if (authStyle === 'InParams') {
+    params.append('client_id', clientId);
+    params.append('client_secret', clientSecret);
+  } else {
+    const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+    headers['Authorization'] = `Basic ${credentials}`;
+  }
+
+  const response = await fetch(tokenUrl, {
+    method: 'POST',
+    headers,
+    body: params.toString()
+  });
+
+  if (!response.ok) {
+    let errorText;
+    try {
+      const errorData = await response.json();
+      errorText = JSON.stringify(errorData);
+    } catch {
+      errorText = await response.text();
+    }
+    throw new Error(
+      `OAuth2 token request failed: ${response.status} ${response.statusText} - ${errorText}`
+    );
+  }
+
+  const data = await response.json();
+
+  if (!data.access_token) {
+    throw new Error('No access_token in OAuth2 response');
+  }
+
+  return data.access_token;
+}
+
+/**
+ * Get the Authorization header value from context using available auth method.
+ * Supports: Bearer Token, Basic Auth, OAuth2 Authorization Code, OAuth2 Client Credentials
+ *
+ * @param {Object} context - Execution context with environment and secrets
+ * @param {Object} context.environment - Environment variables
+ * @param {Object} context.secrets - Secret values
+ * @returns {Promise<string>} Authorization header value (e.g., "Bearer xxx" or "Basic xxx")
+ */
+async function getAuthorizationHeader(context) {
+  const env = context.environment || {};
+  const secrets = context.secrets || {};
+
+  // Method 1: Simple Bearer Token
+  if (secrets.BEARER_AUTH_TOKEN) {
+    const token = secrets.BEARER_AUTH_TOKEN;
+    return token.startsWith('Bearer ') ? token : `Bearer ${token}`;
+  }
+
+  // Method 2: Basic Auth (username + password)
+  if (secrets.BASIC_PASSWORD && secrets.BASIC_USERNAME) {
+    const credentials = Buffer.from(`${secrets.BASIC_USERNAME}:${secrets.BASIC_PASSWORD}`).toString('base64');
+    return `Basic ${credentials}`;
+  }
+
+  // Method 3: OAuth2 Authorization Code - use pre-existing access token
+  if (secrets.OAUTH2_AUTHORIZATION_CODE_ACCESS_TOKEN) {
+    const token = secrets.OAUTH2_AUTHORIZATION_CODE_ACCESS_TOKEN;
+    return token.startsWith('Bearer ') ? token : `Bearer ${token}`;
+  }
+
+  // Method 4: OAuth2 Client Credentials - fetch new token
+  if (secrets.OAUTH2_CLIENT_CREDENTIALS_CLIENT_SECRET) {
+    const tokenUrl = env.OAUTH2_CLIENT_CREDENTIALS_TOKEN_URL;
+    const clientId = env.OAUTH2_CLIENT_CREDENTIALS_CLIENT_ID;
+    const clientSecret = secrets.OAUTH2_CLIENT_CREDENTIALS_CLIENT_SECRET;
+
+    if (!tokenUrl || !clientId) {
+      throw new Error('OAuth2 Client Credentials flow requires TOKEN_URL and CLIENT_ID in env');
+    }
+
+    const token = await getClientCredentialsToken({
+      tokenUrl,
+      clientId,
+      clientSecret,
+      scope: env.OAUTH2_CLIENT_CREDENTIALS_SCOPE,
+      audience: env.OAUTH2_CLIENT_CREDENTIALS_AUDIENCE,
+      authStyle: env.OAUTH2_CLIENT_CREDENTIALS_AUTH_STYLE
+    });
+
+    return `Bearer ${token}`;
+  }
+
+  throw new Error(
+    'No authentication configured. Provide one of: ' +
+    'BEARER_AUTH_TOKEN, BASIC_USERNAME/BASIC_PASSWORD, ' +
+    'OAUTH2_AUTHORIZATION_CODE_ACCESS_TOKEN, or OAUTH2_CLIENT_CREDENTIALS_*'
+  );
+}
+
+/**
+ * Get the base URL/address for API calls
+ * @param {Object} params - Request parameters
+ * @param {string} [params.address] - Address from params
+ * @param {Object} context - Execution context
+ * @returns {string} Base URL
+ */
+function getBaseURL(params, context) {
+  const env = context.environment || {};
+  const address = params?.address || env.ADDRESS;
+
+  if (!address) {
+    throw new Error('No URL specified. Provide address parameter or ADDRESS environment variable');
+  }
+
+  // Remove trailing slash if present
+  return address.endsWith('/') ? address.slice(0, -1) : address;
+}
+
+/**
  * SGNL Actions - Template Utilities
  *
  * Provides JSONPath-based template resolution for SGNL actions.
@@ -543,6 +699,45 @@ function resolveJSONPathTemplates(input, jobContext, options = {}) {
   return { result, errors: allErrors };
 }
 
+/**
+ * Security Event Token (SET) Utilities
+ *
+ * Utilities for building and signing Security Event Tokens according to RFC 8417.
+ */
+
+/**
+ * Sign a Security Event Token (SET).
+ *
+ * Reserved claims (iss, iat, jti, exp, nbf) are automatically added during signing
+ * and will be filtered from your payload if included.
+ *
+ * @param {Object} context - The action context with crypto API
+ * @param {Object} eventPayload - The SET payload with event-specific claims (aud, sub_id, events, etc.)
+ * @returns {Promise<string>} Signed JWT string
+ *
+ * @example
+ * const payload = {
+ *   aud: 'https://example.com',
+ *   sub_id: { format: 'email', email: 'user@example.com' },
+ *   events: {
+ *     'https://schemas.openid.net/secevent/caep/event-type/session-revoked': {
+ *       event_timestamp: Math.floor(Date.now() / 1000)
+ *     }
+ *   }
+ * };
+ * const jwt = await signSET(context, payload);
+ */
+async function signSET(context, eventPayload) {
+  // Filter out reserved claims that are set automatically during signing
+  const { iss, iat, jti, exp, nbf, ...cleanPayload } = eventPayload;
+
+  if (iss || iat || jti || exp || nbf) {
+    console.warn('signSET: Reserved claims (iss, iat, jti, exp, nbf) are set automatically and will be ignored');
+  }
+
+  return await context.crypto.signJWT(cleanPayload, { typ: 'secevent+jwt' });
+}
+
 // Event type constant
 const SESSION_REVOKED_EVENT = 'https://schemas.openid.net/secevent/caep/event-type/session-revoked';
 
@@ -558,21 +753,41 @@ function parseSubject(subjectStr) {
   }
 }
 
-/**
- * Build destination URL
- */
-function buildUrl(address, suffix) {
-  if (!suffix) {
-    return address;
-  }
-  const baseUrl = address.endsWith('/') ? address.slice(0, -1) : address;
-  const cleanSuffix = suffix.startsWith('/') ? suffix.slice(1) : suffix;
-  return `${baseUrl}/${cleanSuffix}`;
-}
-
 var script = {
   /**
-   * Transmit a CAEP Session Revoked event
+   * Main execution handler - transmits a CAEP Session Revoked event as a Security Event Token
+   *
+   * @param {Object} params - Job input parameters
+   * @param {string} params.subject - Subject identifier JSON (e.g., {"format":"email","email":"user@example.com"})
+   * @param {string} params.audience - Intended recipient of the SET (e.g., https://customer.okta.com/)
+   * @param {string} params.address - Optional destination URL override (defaults to ADDRESS environment variable)
+   * @param {string} params.initiating_entity - What initiated the session revocation (optional)
+   * @param {string} params.reason_admin - Administrative reason for revocation (optional)
+   * @param {string} params.reason_user - User-facing reason for revocation (optional)
+   *
+   * @param {Object} context - Execution context with secrets and environment
+   * @param {Object} context.environment - Environment configuration
+   * @param {string} context.environment.ADDRESS - Default destination URL for the SET transmission
+   *
+   * The configured auth type will determine which of the following environment variables and secrets are available
+   * @param {string} context.secrets.BEARER_AUTH_TOKEN
+   *
+   * @param {string} context.secrets.BASIC_USERNAME
+   * @param {string} context.secrets.BASIC_PASSWORD
+   *
+   * @param {string} context.secrets.OAUTH2_CLIENT_CREDENTIALS_CLIENT_SECRET
+   * @param {string} context.environment.OAUTH2_CLIENT_CREDENTIALS_AUDIENCE
+   * @param {string} context.environment.OAUTH2_CLIENT_CREDENTIALS_AUTH_STYLE
+   * @param {string} context.environment.OAUTH2_CLIENT_CREDENTIALS_CLIENT_ID
+   * @param {string} context.environment.OAUTH2_CLIENT_CREDENTIALS_SCOPE
+   * @param {string} context.environment.OAUTH2_CLIENT_CREDENTIALS_TOKEN_URL
+   *
+   * @param {string} context.secrets.OAUTH2_AUTHORIZATION_CODE_ACCESS_TOKEN
+   *
+   * @param {Object} context.crypto - Cryptographic operations API
+   * @param {Function} context.crypto.signJWT - Function to sign JWTs with server-side keys
+   *
+   * @returns {Object} Transmission result with status, statusCode, body, and retryable flag
    */
   invoke: async (params, context) => {
     const jobContext = context.data || {};
@@ -580,43 +795,32 @@ var script = {
     // Resolve JSONPath templates in params
     const { result: resolvedParams, errors } = resolveJSONPathTemplates(params, jobContext);
     if (errors.length > 0) {
-     console.warn('Template resolution errors:', errors);
+      console.warn('Template resolution errors:', errors);
     }
 
-    // Validate required parameters
-    if (!resolvedParams.audience) {
-      throw new Error('audience is required');
-    }
-    if (!resolvedParams.subject) {
-      throw new Error('subject is required');
-    }
-    if (!resolvedParams.address) {
-      throw new Error('address is required');
-    }
-
-    // Get secrets
-    const authToken = context.secrets?.AUTH_TOKEN;
+    const address = getBaseURL(resolvedParams, context);
+    const authHeader = await getAuthorizationHeader(context);
 
     // Parse parameters
     const subject = parseSubject(resolvedParams.subject);
 
     // Build event payload
     const eventPayload = {
-      event_timestamp: resolvedParams.eventTimestamp || Math.floor(Date.now() / 1000)
+      event_timestamp: Math.floor(Date.now() / 1000)
     };
 
     // Add optional event claims
-    if (resolvedParams.initiatingEntity) {
-      eventPayload.initiating_entity = resolvedParams.initiatingEntity;
+    if (resolvedParams.initiating_entity) {
+      eventPayload.initiating_entity = resolvedParams.initiating_entity;
     }
-    if (resolvedParams.reasonAdmin) {
-      eventPayload.reason_admin = resolvedParams.reasonAdmin;
+    if (resolvedParams.reason_admin) {
+      eventPayload.reason_admin = resolvedParams.reason_admin;
     }
-    if (resolvedParams.reasonUser) {
-      eventPayload.reason_user = resolvedParams.reasonUser;
+    if (resolvedParams.reason_user) {
+      eventPayload.reason_user = resolvedParams.reason_user;
     }
 
-    // Build the SET payload (crypto service will add iss, iat, jti)
+    // Build the SET payload (reserved claims will be added during signing)
     const setPayload = {
       aud: resolvedParams.audience,
       sub_id: subject,  // CAEP 3.0 format
@@ -625,19 +829,13 @@ var script = {
       }
     };
 
-    // Sign the SET using the runner's crypto.signJWT()
-    const jwt = await context.crypto.signJWT(setPayload, {
-      typ: 'secevent+jwt'
-    });
+    const jwt = await signSET(context, setPayload);
 
-    // Build destination URL
-    const url = buildUrl(resolvedParams.address, resolvedParams.addressSuffix);
-
-    // Transmit the SET using the library
-    return await transmitSET(jwt, url, {
-      authToken,
+    // Transmit the SET
+    return await transmitSET(jwt, address, {
       headers: {
-        'User-Agent': resolvedParams.userAgent || 'SGNL-Action-Framework/1.0'
+        'Authorization': authHeader,
+        'User-Agent': 'SGNL-CAEP-Hub/2.0'
       }
     });
   },
