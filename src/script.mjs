@@ -1,5 +1,5 @@
+import { getAuthorizationHeader, getBaseURL, resolveJSONPathTemplates } from '@sgnl-actions/utils';
 import { transmitSET } from '@sgnl-ai/set-transmitter';
-import { resolveJSONPathTemplates, signSET, getBaseURL, getAuthorizationHeader } from '@sgnl-actions/utils';
 
 // Event type constant
 const SESSION_REVOKED_EVENT = 'https://schemas.openid.net/secevent/caep/event-type/session-revoked';
@@ -95,7 +95,7 @@ export default {
     // const jwt = await signSET(context, setPayload);
 
     // Transmit the SET
-    return await transmitSET(setPayload, address, {
+    return await transmitSET("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiYWRtaW4iOnRydWUsImlhdCI6MTUxNjIzOTAyMn0.KMUFsIDTnFmyG3nMiGM6H9FNFUROf3wh7SmqJp-QV30", address, {
       headers: {
         'Authorization': authHeader,
         'User-Agent': 'SGNL-CAEP-Hub/2.0'
