@@ -535,6 +535,9 @@ async function delay(ms) {
 
 // src/utils.ts
 function isValidSET(jwt) {
+  if (typeof jwt !== "string") {
+    return false;
+  }
   const parts = jwt.split(".");
   if (parts.length !== 3) {
     return false;
@@ -699,6 +702,62 @@ async function transmitSET(jwt, url, options = {}) {
 // Event type constant
 const SESSION_REVOKED_EVENT = 'https://schemas.openid.net/secevent/caep/event-type/session-revoked';
 
+/**
+ * Sign a Security Event Token (SET) with server-side keys
+ * @param {Object} context - Context object containing crypto operations
+ * @param {Object} payload - SET payload to sign
+ * @returns {Promise<string>} Signed JWT
+ */
+async function signSET(context, payload) {
+  const CRYPTO_SIGN_JWT_ENDPOINT = "crypto.sgnl.svc.cluster.local:80";
+
+  let signEndpoint = `${CRYPTO_SIGN_JWT_ENDPOINT}?typ=secevent%2Bjwt`;
+
+  try {
+    let normalizedPayload;
+    if (payload === undefined || payload === null) {
+      normalizedPayload = {};
+    } else if (typeof payload === 'object' && !Array.isArray(payload)) {
+      normalizedPayload = payload;
+    } else {
+      throw new TypeError('payload must be an object when signing JWT');
+    }
+
+    console.log("Calling Sign Endpoint", JSON.stringify(normalizedPayload, null, 2));
+
+    const response = await globalThis.fetch(signEndpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ payload: normalizedPayload || {} }),
+    });
+
+    if (!response.ok) {
+      // Consume response body to avoid memory leaks
+      await response.text();
+
+      if (response.status >= 400 && response.status < 500) {
+        throw new Error('Failed to sign JWT: invalid request');
+      }
+
+      // Other non-OK status codes
+      throw new Error('Failed to sign JWT: service unavailable');
+    }
+
+    const result = await response.json();
+    return result.jwt;
+  } catch (error) {
+    if (error instanceof TypeError ||
+        error.message.includes('Failed to sign JWT') ||
+        error.message.includes('Invalid typ parameter')) {
+      throw error;
+    }
+    // Network errors and other unexpected errors - don't expose internal details
+    throw new Error('Failed to sign JWT: service unavailable');
+  }
+}
+
 
 /**
  * Parse subject JSON string
@@ -789,12 +848,12 @@ var script = {
 
     console.log('SET Payload:', JSON.stringify(setPayload, null, 2));
 
-    // const jwt = await signSET(context, setPayload);
+    const jwt = await signSET(context, setPayload);
 
     console.log('Transmitting SET to:', address);
 
     // Transmit the SET
-    return await transmitSET("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiYWRtaW4iOnRydWUsImlhdCI6MTUxNjIzOTAyMn0.KMUFsIDTnFmyG3nMiGM6H9FNFUROf3wh7SmqJp-QV30", address, {
+    return await transmitSET(jwt, address, {
       headers: {
         'Authorization': authHeader,
         'User-Agent': 'SGNL-CAEP-Hub/2.0'
