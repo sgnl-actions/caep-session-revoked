@@ -699,6 +699,10 @@ function resolveJSONPathTemplates(input, jobContext, options = {}) {
   return { result, errors: allErrors };
 }
 
+// Event type constant
+const SESSION_REVOKED_EVENT = 'https://schemas.openid.net/secevent/caep/event-type/session-revoked';
+
+
 /**
  * Parse subject JSON string
  */
@@ -759,27 +763,37 @@ var script = {
     const authHeader = await getAuthorizationHeader(context);
 
     // Parse parameters
-    parseSubject(resolvedParams.subject);
+    const subject = parseSubject(resolvedParams.subject);
+
+    // Build event payload
+    const eventPayload = {
+      event_timestamp: Math.floor(Date.now() / 1000)
+    };
 
     // Add optional event claims
     if (resolvedParams.initiating_entity) {
-      resolvedParams.initiating_entity;
+      eventPayload.initiating_entity = resolvedParams.initiating_entity;
     }
     if (resolvedParams.reason_admin) {
-      resolvedParams.reason_admin;
+      eventPayload.reason_admin = resolvedParams.reason_admin;
     }
     if (resolvedParams.reason_user) {
-      resolvedParams.reason_user;
+      eventPayload.reason_user = resolvedParams.reason_user;
     }
 
     // Build the SET payload (reserved claims will be added during signing)
-    ({
-      aud: resolvedParams.audience});
+    const setPayload = {
+      aud: resolvedParams.audience,
+      sub_id: subject,  // CAEP 3.0 format
+      events: {
+        [SESSION_REVOKED_EVENT]: eventPayload
+      }
+    };
 
     // const jwt = await signSET(context, setPayload);
 
     // Transmit the SET
-    return await transmitSET(jwt, address, {
+    return await transmitSET(setPayload, address, {
       headers: {
         'Authorization': authHeader,
         'User-Agent': 'SGNL-CAEP-Hub/2.0'

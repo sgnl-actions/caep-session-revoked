@@ -95,7 +95,7 @@ export default {
     // const jwt = await signSET(context, setPayload);
 
     // Transmit the SET
-    return await transmitSET(jwt, address, {
+    return await transmitSET(setPayload, address, {
       headers: {
         'Authorization': authHeader,
         'User-Agent': 'SGNL-CAEP-Hub/2.0'
