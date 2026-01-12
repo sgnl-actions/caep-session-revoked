@@ -92,7 +92,7 @@ export default {
       }
     };
 
-    const jwt = await signSET(context, setPayload);
+    // const jwt = await signSET(context, setPayload);
 
     // Transmit the SET
     return await transmitSET(jwt, address, {
