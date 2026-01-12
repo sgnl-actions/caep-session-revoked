@@ -709,9 +709,10 @@ const SESSION_REVOKED_EVENT = 'https://schemas.openid.net/secevent/caep/event-ty
  * @returns {Promise<string>} Signed JWT
  */
 async function signSET(context, payload) {
-  const CRYPTO_SIGN_JWT_ENDPOINT = "crypto.sgnl.svc.cluster.local:80";
+  const CRYPTO_SERVICE_URL = 'http://crypto.sgnl.svc.cluster.local:80';
+  const CRYPTO_SIGN_JWT_ENDPOINT = `${CRYPTO_SERVICE_URL}/crypto/v1/jwt/sign`;
 
-  let signEndpoint = `${CRYPTO_SIGN_JWT_ENDPOINT}/crypto/v1/jwt/sign?typ=secevent%2Bjwt`;
+  let signEndpoint = `${CRYPTO_SIGN_JWT_ENDPOINT}?typ=secevent%2Bjwt`;
 
   try {
     let normalizedPayload;
