@@ -437,45 +437,6 @@ function resolveJSONPathTemplates(input, jobContext, options = {}) {
   return { result, errors: allErrors };
 }
 
-/**
- * Security Event Token (SET) Utilities
- *
- * Utilities for building and signing Security Event Tokens according to RFC 8417.
- */
-
-/**
- * Sign a Security Event Token (SET).
- *
- * Reserved claims (iss, iat, jti, exp, nbf) are automatically added during signing
- * and will be filtered from your payload if included.
- *
- * @param {Object} context - The action context with crypto API
- * @param {Object} eventPayload - The SET payload with event-specific claims (aud, sub_id, events, etc.)
- * @returns {Promise<string>} Signed JWT string
- *
- * @example
- * const payload = {
- *   aud: 'https://example.com',
- *   sub_id: { format: 'email', email: 'user@example.com' },
- *   events: {
- *     'https://schemas.openid.net/secevent/caep/event-type/session-revoked': {
- *       event_timestamp: Math.floor(Date.now() / 1000)
- *     }
- *   }
- * };
- * const jwt = await signSET(context, payload);
- */
-async function signSET(context, eventPayload) {
-  // Filter out reserved claims that are set automatically during signing
-  const { iss, iat, jti, exp, nbf, ...cleanPayload } = eventPayload;
-
-  if (iss || iat || jti || exp || nbf) {
-    console.warn('signSET: Reserved claims (iss, iat, jti, exp, nbf) are set automatically and will be ignored');
-  }
-
-  return await context.crypto.signJWT(cleanPayload, { typ: 'secevent+jwt' });
-}
-
 // src/types.ts
 var DEFAULT_RETRY_CONFIG = {
   maxAttempts: 3,
@@ -574,9 +535,6 @@ async function delay(ms) {
 
 // src/utils.ts
 function isValidSET(jwt) {
-  if (typeof jwt !== "string") {
-    return false;
-  }
   const parts = jwt.split(".");
   if (parts.length !== 3) {
     return false;
@@ -831,12 +789,12 @@ var script = {
 
     console.log('SET Payload:', JSON.stringify(setPayload, null, 2));
 
-    const jwt = await signSET(context, setPayload);
+    // const jwt = await signSET(context, setPayload);
 
     console.log('Transmitting SET to:', address);
 
     // Transmit the SET
-    return await transmitSET(jwt, address, {
+    return await transmitSET("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiYWRtaW4iOnRydWUsImlhdCI6MTUxNjIzOTAyMn0.KMUFsIDTnFmyG3nMiGM6H9FNFUROf3wh7SmqJp-QV30", address, {
       headers: {
         'Authorization': authHeader,
         'User-Agent': 'SGNL-CAEP-Hub/2.0'
