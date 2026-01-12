@@ -92,10 +92,14 @@ export default {
       }
     };
 
-    // const jwt = await signSET(context, setPayload);
+    console.log('SET Payload:', JSON.stringify(setPayload, null, 2));
+
+    const jwt = await signSET(context, setPayload);
+
+    console.log('Transmitting SET to:', address);
 
     // Transmit the SET
-    return await transmitSET("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiYWRtaW4iOnRydWUsImlhdCI6MTUxNjIzOTAyMn0.KMUFsIDTnFmyG3nMiGM6H9FNFUROf3wh7SmqJp-QV30", address, {
+    return await transmitSET(jwt, address, {
       headers: {
         'Authorization': authHeader,
         'User-Agent': 'SGNL-CAEP-Hub/2.0'
