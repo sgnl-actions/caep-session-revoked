@@ -1,4 +1,4 @@
-import { getAuthorizationHeader, getBaseURL, resolveJSONPathTemplates } from '@sgnl-actions/utils';
+import { getAuthorizationHeader, getBaseURL, signSET, resolveJSONPathTemplates } from '@sgnl-actions/utils';
 import { transmitSET } from '@sgnl-ai/set-transmitter';
 
 // Event type constant
