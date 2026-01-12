@@ -725,7 +725,7 @@ async function signSET(context, payload) {
 
     console.log("Calling Sign Endpoint", JSON.stringify(normalizedPayload, null, 2));
 
-    const response = await globalThis.fetch(signEndpoint, {
+    const response = await fetch(signEndpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
