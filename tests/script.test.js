@@ -12,7 +12,6 @@ jest.unstable_mockModule('@sgnl-ai/set-transmitter', () => ({
 
 // Mock @sgnl-actions/utils module
 jest.unstable_mockModule('@sgnl-actions/utils', () => ({
-  resolveJSONPathTemplates: jest.fn((params) => ({ result: params, errors: [] })),
   signSET: jest.fn().mockResolvedValue('mock.jwt.token'),
   getBaseURL: jest.fn((params, context) => params.address || context.environment?.ADDRESS),
   getAuthorizationHeader: jest.fn().mockResolvedValue('Bearer test-token')
