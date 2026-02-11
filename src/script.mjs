@@ -1,5 +1,5 @@
 import { transmitSET } from '@sgnl-ai/set-transmitter';
-import { signSET, getBaseURL, getAuthorizationHeader } from '@sgnl-actions/utils';
+import { signSET, getBaseURL, getAuthorizationHeader, SGNL_USER_AGENT } from '@sgnl-actions/utils';
 
 // Event type constant
 const SESSION_REVOKED_EVENT = 'https://schemas.openid.net/secevent/caep/event-type/session-revoked';
@@ -90,7 +90,7 @@ export default {
     return await transmitSET(jwt, address, {
       headers: {
         'Authorization': authHeader,
-        'User-Agent': 'SGNL-CAEP-Hub/2.0'
+        'User-Agent': SGNL_USER_AGENT
       }
     });
   },
