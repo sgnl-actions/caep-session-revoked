@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/sgnl-actions/schemas/main/metadata.schema.json
 name: caep-session-revoked
 description: Transmits CAEP Session Revoked events as Security Event Tokens (SET)
 
