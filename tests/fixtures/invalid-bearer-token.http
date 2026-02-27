@@ -1,0 +1,11 @@
+HTTP/1.1 400 Bad Request
+content-length: 110
+content-type: application/json
+date: Fri, 27 Feb 2026 22:02:50 GMT
+server: istio-envoy
+strict-transport-security: max-age=31536000;
+x-envoy-upstream-service-time: 3
+x-request-id: e6fa61fa-73f0-47ee-b884-7b9672aafd19
+x-sgnl-istio-vs: sgnlapis-cloud-events
+
+{"err":"authentication_failed","description":"The SET Recipient could not authenticate the SET Transmitter."}
