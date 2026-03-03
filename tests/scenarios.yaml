@@ -8,12 +8,12 @@ action:
     subject: "{\"format\": \"email\", \"email\": \"test@sgnl.ai\"}"
     audience: https://audience.example.com
     address: https://testing-client.sgnlapis.cloud/events/ssf/v1/04465422-8d45-460b-b5c5-82957f742c7c
-    initiating_entity: test-initiating_entity
-    reason_admin: test-reason_admin
-    reason_user: test-reason_user
+    initiating_entity: policy-engine
+    reason_admin: Session revoked due to policy violation
+    reason_user: Your session has been revoked
   context:
     secrets:
-      BEARER_AUTH_TOKEN: test-bearer-auth-token
+      BEARER_AUTH_TOKEN: auth-token
     environment: {}
     crypto:
       signJWT:
@@ -63,7 +63,7 @@ scenarios:
   - name: Invalid Bearer Token
     context:
       secrets:
-        BEARER_AUTH_TOKEN: invalid-bearer-auth-token
+        BEARER_AUTH_TOKEN: invalid-token
     request:
       method: POST
       url: https://testing-client.sgnlapis.cloud/events/ssf/v1/04465422-8d45-460b-b5c5-82957f742c7c
