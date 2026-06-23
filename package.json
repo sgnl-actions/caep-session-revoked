@@ -35,10 +35,13 @@
     "rollup": "^4.60.4"
   },
   "dependencies": {
-    "@sgnl-actions/utils": "github:sgnl-actions/utils#v1.0.8",
+    "@sgnl-actions/utils": "github:sgnl-actions/utils#v1.0.9",
     "@sgnl-ai/set-transmitter": "^1.0.0"
   },
   "overrides": {
-    "serialize-javascript": ">=7.0.5"
+    "serialize-javascript": ">=7.0.5",
+    "generate-license-file": {
+      "minipass-fetch": "5.0.2"
+    }
   }
 }
