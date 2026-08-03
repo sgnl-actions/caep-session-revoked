@@ -15,6 +15,25 @@ function parseSubject(subjectStr) {
   }
 }
 
+/**
+ * Parse reason - auto-wraps plain strings as i18n objects per CAEP spec.
+ * If input is a JSON object, use it directly. If plain string, wrap as {"en": value}.
+ */
+function parseReason(reasonStr) {
+  if (!reasonStr) return undefined;
+
+  try {
+    const parsed = JSON.parse(reasonStr);
+    if (typeof parsed === 'object' && parsed !== null) {
+      return parsed;
+    }
+  } catch {
+    // Not JSON - fall through to auto-wrap
+  }
+
+  return { en: reasonStr };
+}
+
 export default {
   /**
    * Main execution handler - transmits a CAEP Session Revoked event as a Security Event Token
@@ -26,6 +45,7 @@ export default {
    * @param {string} params.initiating_entity - What initiated the session revocation (optional)
    * @param {string} params.reason_admin - Administrative reason for revocation (optional)
    * @param {string} params.reason_user - User-facing reason for revocation (optional)
+   * @param {string} params.event_timestamp - Unix timestamp (seconds) when the event occurred (optional)
    *
    * @param {Object} context - Execution context with secrets and environment
    * @param {Object} context.environment - Environment configuration
@@ -61,7 +81,9 @@ export default {
 
     // Build event payload
     const eventPayload = {
-      event_timestamp: Math.floor(Date.now() / 1000)
+      event_timestamp: params.event_timestamp
+        ? parseInt(params.event_timestamp, 10)
+        : Math.floor(Date.now() / 1000)
     };
 
     // Add optional event claims
@@ -69,10 +91,10 @@ export default {
       eventPayload.initiating_entity = params.initiating_entity;
     }
     if (params.reason_admin) {
-      eventPayload.reason_admin = params.reason_admin;
+      eventPayload.reason_admin = parseReason(params.reason_admin);
     }
     if (params.reason_user) {
-      eventPayload.reason_user = params.reason_user;
+      eventPayload.reason_user = parseReason(params.reason_user);
     }
 
     // Build the SET payload (reserved claims will be added during signing)
