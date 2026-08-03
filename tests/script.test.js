@@ -87,8 +87,8 @@ describe('CAEP Session Revoked Transmitter', () => {
       const params = {
         ...validParams,
         initiating_entity: 'admin',
-        reason_admin: 'Security policy violation',
-        reason_user: 'Your session has been terminated for security reasons'
+        reason_admin: '{"en":"Security policy violation"}',
+        reason_user: '{"en":"Your session has been terminated"}'
       };
 
       await script.invoke(params, mockContext);
@@ -100,12 +100,96 @@ describe('CAEP Session Revoked Transmitter', () => {
             'https://schemas.openid.net/secevent/caep/event-type/session-revoked': expect.objectContaining({
               event_timestamp: expect.any(Number),
               initiating_entity: 'admin',
-              reason_admin: 'Security policy violation',
-              reason_user: 'Your session has been terminated for security reasons'
+              reason_admin: { en: 'Security policy violation' },
+              reason_user: { en: 'Your session has been terminated' }
             })
           }
         })
       );
+    });
+
+    test('should auto-wrap plain string reasons as i18n objects', async () => {
+      const params = {
+        ...validParams,
+        reason_admin: 'Policy violation detected',
+        reason_user: 'Session ended for security'
+      };
+
+      await script.invoke(params, mockContext);
+
+      expect(signSET).toHaveBeenCalledWith(
+        mockContext,
+        expect.objectContaining({
+          events: {
+            'https://schemas.openid.net/secevent/caep/event-type/session-revoked': expect.objectContaining({
+              reason_admin: { en: 'Policy violation detected' },
+              reason_user: { en: 'Session ended for security' }
+            })
+          }
+        })
+      );
+    });
+
+    test('should pass through JSON object reasons without wrapping', async () => {
+      const params = {
+        ...validParams,
+        reason_admin: '{"en":"English reason","fr":"Raison française"}',
+        reason_user: '{"en":"Your session ended","es":"Su sesión terminó"}'
+      };
+
+      await script.invoke(params, mockContext);
+
+      expect(signSET).toHaveBeenCalledWith(
+        mockContext,
+        expect.objectContaining({
+          events: {
+            'https://schemas.openid.net/secevent/caep/event-type/session-revoked': expect.objectContaining({
+              reason_admin: { en: 'English reason', fr: 'Raison française' },
+              reason_user: { en: 'Your session ended', es: 'Su sesión terminó' }
+            })
+          }
+        })
+      );
+    });
+
+    test('should not include reason fields when not provided', async () => {
+      await script.invoke(validParams, mockContext);
+
+      const setPayload = signSET.mock.calls[0][1];
+      const eventPayload = setPayload.events['https://schemas.openid.net/secevent/caep/event-type/session-revoked'];
+      expect(eventPayload.reason_admin).toBeUndefined();
+      expect(eventPayload.reason_user).toBeUndefined();
+    });
+
+    test('should use custom event_timestamp when provided', async () => {
+      const params = {
+        ...validParams,
+        event_timestamp: '1700000000'
+      };
+
+      await script.invoke(params, mockContext);
+
+      expect(signSET).toHaveBeenCalledWith(
+        mockContext,
+        expect.objectContaining({
+          events: {
+            'https://schemas.openid.net/secevent/caep/event-type/session-revoked': expect.objectContaining({
+              event_timestamp: 1700000000
+            })
+          }
+        })
+      );
+    });
+
+    test('should default event_timestamp to current time when not provided', async () => {
+      const before = Math.floor(Date.now() / 1000);
+      await script.invoke(validParams, mockContext);
+      const after = Math.floor(Date.now() / 1000);
+
+      const setPayload = signSET.mock.calls[0][1];
+      const eventPayload = setPayload.events['https://schemas.openid.net/secevent/caep/event-type/session-revoked'];
+      expect(eventPayload.event_timestamp).toBeGreaterThanOrEqual(before);
+      expect(eventPayload.event_timestamp).toBeLessThanOrEqual(after);
     });
 
     test('should include auth token in request', async () => {
